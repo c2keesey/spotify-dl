@@ -106,7 +106,7 @@ spotify_dl --sync --config sync_config.json --limit-playlists 2 --limit 5
 
 ## Folder Organization
 
-Organize playlists into folders using a `folders.json` file:
+Organize playlists into folders using a `folders.json` file in the project root (see `folders.json.example`):
 
 ```json
 {

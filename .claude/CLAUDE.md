@@ -58,7 +58,7 @@ Config file (`sync_config.json`):
 {
   "output_dir": "/path/to/output",
   "spotify_user_id": "your_spotify_user_id",
-  "folders_file": "spotify_dl/folders.json"
+  "folders_file": "folders.json"
 }
 ```
 
