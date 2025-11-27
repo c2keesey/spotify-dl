@@ -138,3 +138,8 @@ Tests require:
 - Spotify API credentials in environment
 - ffmpeg installed (`sudo apt install ffmpeg` on Ubuntu)
 - Test files are in `tests/` directory
+
+## Known Issues
+
+### Spotify API not returning some playlists
+Playlists with Japanese brackets `「」` and some special Unicode characters are not returned by the Spotify `user_playlists()` API, even though they exist and are public. This appears to be a Spotify API limitation. Affected playlists will show "Could not find playlist" during sync. Workaround: rename the playlist to use standard characters.
