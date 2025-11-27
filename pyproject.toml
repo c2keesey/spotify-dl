@@ -1,0 +1,49 @@
+[project]
+name = "spotify_dl"
+version = "8.9.0"
+description = "Downloads songs from a Spotify Playlist/Track/Album that you provide"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    { name = "Sathya Bhat", email = "sathya@sathyasays.com" }
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "python-dotenv~=1.0",
+    "sentry_sdk~=1.16",
+    "yt-dlp>=2023.3.4",
+    "spotipy~=2.21",
+    "mutagen~=1.45",
+    "rich~=12.0",
+    "urllib3~=1.26",
+    "ytmusicapi~=1.6.0",
+    "Levenshtein~=0.25.1",
+]
+
+[project.scripts]
+spotify_dl = "spotify_dl.spotify_dl:spotify_dl"
+
+[project.urls]
+Homepage = "https://github.com/SathyaBhat/spotify-dl/"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

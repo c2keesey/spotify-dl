@@ -1,6 +1,9 @@
 import logging
 from os import getenv
+from dotenv import load_dotenv
 import sentry_sdk
+
+load_dotenv()
 from rich.logging import RichHandler
 from rich.console import Console
 

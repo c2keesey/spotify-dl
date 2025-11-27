@@ -24,6 +24,7 @@ unins
 
 # Environment variables
 .env
+.envrc
 
 # Test/personal data
 test_sync_output/
