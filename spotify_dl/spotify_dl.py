@@ -148,6 +148,18 @@ def spotify_dl():
         action="store_true",
         help="Show what would be synced without making changes (only with --sync)",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Limit number of songs to download (0 = no limit, only with --sync)",
+    )
+    parser.add_argument(
+        "--limit-playlists",
+        type=int,
+        default=0,
+        help="Limit number of playlists to process (0 = no limit, only with --sync)",
+    )
     args = parser.parse_args()
     num_cores = os.cpu_count()
     args.multi_core = int(args.multi_core)
@@ -174,7 +186,7 @@ def spotify_dl():
 
     if args.sync:
         log.info("Starting spotify_dl sync v%s", VERSION)
-        run_sync(args.config, dry_run=args.dry_run)
+        run_sync(args.config, dry_run=args.dry_run, limit=args.limit, limit_playlists=args.limit_playlists)
         sys.exit(0)
 
     if os.path.isfile(os.path.expanduser("~/.spotify_dl_settings")):

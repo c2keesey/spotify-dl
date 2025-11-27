@@ -41,6 +41,29 @@ spotify_dl -mc 4 -l <playlist_url>  # Parallel download with 4 cores
 spotify_dl -s y -l <playlist_url>   # Enable SponsorBlock
 ```
 
+### Running Playlist Sync
+```bash
+# Full sync using folders.json playlist mapping
+spotify_dl --sync --config sync_config.json
+
+# Test with limits
+spotify_dl --sync --config sync_config.json --limit-playlists 2 --limit 5
+
+# Dry run (show what would happen)
+spotify_dl --sync --config sync_config.json --dry-run
+```
+
+Config file (`sync_config.json`):
+```json
+{
+  "output_dir": "/path/to/output",
+  "spotify_user_id": "your_spotify_user_id",
+  "folders_file": "spotify_dl/folders.json"
+}
+```
+
+Cron job runs at 3am daily via `sync_cron.sh`.
+
 ## Architecture
 
 ### Core Flow
@@ -78,8 +101,12 @@ spotify_dl -s y -l <playlist_url>   # Enable SponsorBlock
 - `run_sync()`: Main sync orchestrator - compares Spotify playlists with local state
 - `load_config()` / `load_manifest()` / `save_manifest()`: Config and state management
 - `download_to_cache()`: Downloads songs to cache directory
-- Uses manifest file (`.spotify_dl_manifest.json`) to track downloaded songs and playlist membership
+- `fetch_user_playlists()`: Fetches all playlists for a Spotify user
+- `find_playlist_by_name()`: Looks up playlist by name from user's playlists
+- Uses manifest file (`.spotify_dl_manifest.json`) to track downloaded songs, playlist membership, and cached playlist URLs
 - Copies files from cache to each playlist folder for self-contained directories
+- Supports folder organization via `folders.json` mapping (folder → playlist names)
+- Supports `--limit` (max songs) and `--limit-playlists` (max playlists) for testing
 
 ### Data Flow
 1. Parse Spotify URLs → validate item types (playlist/album/track)

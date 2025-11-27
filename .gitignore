@@ -34,3 +34,7 @@ new_bass_old/
 
 # Sync manifest
 .spotify_dl_manifest.json
+
+# Sync output and logs
+sync_output/
+logs/
