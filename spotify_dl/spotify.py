@@ -61,19 +61,7 @@ def fetch_tracks(sp, item_type, item_id):
                     else:
                         cover = None
 
-                    artists = track_info.get("artists")
-                    main_artist_id = (
-                        artists[0].get("uri", None) if len(artists) > 0 else None
-                    )
                     genre = ""
-                    try:
-                        if main_artist_id:
-                            genres = sp.artist(artist_id=main_artist_id).get("genres", [])
-                            if len(genres) > 0:
-                                genre = genres[0]
-                    except Exception as e:
-                        log.debug(f"Failed to fetch genre for {track_name}: {e}")
-                        genre = ""
                     songs_list.append(
                         {
                             "name": track_name,
@@ -128,13 +116,6 @@ def fetch_tracks(sp, item_type, item_id):
                 else:
                     cover = None
                 genre = ""
-                try:
-                    artist_genres = sp.artist(artist_id=album_info["artists"][0]["uri"])["genres"]
-                    if len(artist_genres) > 0:
-                        genre = artist_genres[0]
-                except Exception as e:
-                    log.debug(f"Failed to fetch genre for album {track_album}: {e}")
-                    genre = ""
                 for item in items["items"]:
                     track_name = item.get("name")
                     track_artist = ", ".join(
@@ -191,13 +172,6 @@ def fetch_tracks(sp, item_type, item_id):
         else:
             cover = None
         genre = ""
-        try:
-            artist_genres = sp.artist(artist_id=items["artists"][0]["uri"])["genres"]
-            if len(artist_genres) > 0:
-                genre = artist_genres[0]
-        except Exception as e:
-            log.debug(f"Failed to fetch genre for track {track_name}: {e}")
-            genre = ""
         songs_list.append(
             {
                 "name": track_name,
