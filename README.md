@@ -1,99 +1,160 @@
-## spotify_dl
+# spotify-dl (Personal Fork)
 
-Downloads songs from any Spotify playlist, album or track.
+Downloads songs from Spotify playlists, albums, or tracks by fetching metadata and downloading from YouTube.
 
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
-[![PyPI download month](https://img.shields.io/pypi/dm/spotify_dl.svg)](https://pypi.python.org/pypi/spotify_dl/)
-[![PyPI license](https://img.shields.io/pypi/l/spotify_dl.svg)](https://pypi.python.org/pypi/spotify_dl/)
-[![PyPI pyversions](https://img.shields.io/pypi/pyversions/spotify_dl.svg)](https://pypi.python.org/pypi/spotify_dl/)
-[![GitHub release](https://img.shields.io/github/release/SathyaBhat/spotify-dl.svg)](https://GitHub.com/SathyaBhat/spotify-dl/releases/)
-[![GitHub stars](https://img.shields.io/github/stars/SathyaBhat/spotify-dl.svg?style=social&label=Star&maxAge=2592000)](https://GitHub.com/SathyaBhat/spotify-dl/stargazers/)
-[![GitHub contributors](https://img.shields.io/github/contributors/SathyaBhat/spotify-dl.svg)](https://GitHub.com/SathyaBhat/spotify-dl/graphs/contributors/)
+> **Fork of [SathyaBhat/spotify-dl](https://github.com/SathyaBhat/spotify-dl)** with added playlist sync functionality for offline DJ libraries.
 
-[![Awesome Badges](https://img.shields.io/badge/badges-awesome-green.svg)](https://github.com/Naereen/badges)
+## What This Fork Adds
 
-### Tell me more!
+- **Playlist Sync Mode**: Keep local folders in sync with Spotify playlists
+- **Folder Organization**: Group playlists into folders via `folders.json` mapping
+- **Playlist Lookup by Name**: Reference playlists by name instead of URLs
+- **Cron-friendly**: Designed for automated daily syncs
 
-I wanted an easy way to grab the songs present in my library so I can download it & use it offline. I no longer use this, but continue to maintain this. spotify-dl doesn't download anything from Spotify. It picks up the metadata from Spotify API and then uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to download the song.
+## Prerequisites
 
-### How do I get this thing running?
+- Python 3.8+
+- ffmpeg (`brew install ffmpeg` on macOS, `apt install ffmpeg` on Ubuntu)
+- Spotify API credentials from [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
 
-Install using pip
+## Quick Start
 
-    pip3 install spotify_dl
+### Installation
 
-Run the program
+```bash
+pip install spotify_dl
+```
 
-    spotify_dl -l spotify_playlist_link_1 spotify_playlist_link_2
+Or clone this repo and install in editable mode:
+```bash
+git clone https://github.com/c2keesey/spotify-dl.git
+cd spotify-dl
+pip install -e .
+```
 
-If you want to make use of parallel download, pass `-mc <number>`, where `<number>` refers to number of cores. If this is too high, spotify-dl will set it to one lesser than max number of cores that you have.
+### Set up Spotify credentials
 
-    spotify_dl -mc 4 -l spotify_playlist_link_1 spotify_playlist_link_2
+```bash
+export SPOTIPY_CLIENT_ID='your-client-id'
+export SPOTIPY_CLIENT_SECRET='your-client-secret'
+```
 
-Spotify-dl can make use of SponsorBlock and skip non-music sections when downloading from YouTube. This is disabled by default and can be enabled using:
+### Basic usage
 
-        spotify_dl -l spotify_playlist_link_1 -s y
+```bash
+# Download a playlist
+spotify_dl -l https://open.spotify.com/playlist/xxxxx -o ./music
 
-For running in verbose mode, append `-V`
+# Parallel download (4 cores)
+spotify_dl -mc 4 -l playlist_url
 
-    spotify_dl -V -l spotify_playlist_link -o download_directory
+# With SponsorBlock (skip intros/outros)
+spotify_dl -s y -l playlist_url
+```
 
-For more details and other arguments, issue `-h`
+## Playlist Sync Mode
 
-    spotify_dl -h
+The main feature of this fork. Keep local directories in sync with your Spotify playlists - great for maintaining an offline library for DJ software.
 
-See [the getting started guide](https://github.com/SathyaBhat/spotify-dl/blob/master/GETTING_STARTED.md) for more details.
+### How it works
 
-### Playlist Sync Mode
+1. Downloads each song once to a shared cache
+2. Copies songs to individual playlist folders (self-contained, USB-drive ready)
+3. Tracks what's been downloaded to enable incremental syncs
+4. Detects additions and removals from playlists
 
-Keep local directories in sync with your Spotify playlists. Useful for maintaining an offline music library (e.g., for DJ software).
+### Config file
 
-1. Create a config file `~/.spotify_dl_sync.json`:
+Create `sync_config.json`:
 
 ```json
 {
   "output_dir": "~/Music/spotify-sync",
-  "playlists": [
-    "https://open.spotify.com/playlist/your_playlist_id_1",
-    "https://open.spotify.com/playlist/your_playlist_id_2"
+  "spotify_user_id": "YOUR_SPOTIFY_USER_ID",
+  "folders_file": "folders.json"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `output_dir` | Where to store downloaded music |
+| `spotify_user_id` | Your Spotify user ID (for playlist lookup by name) |
+| `folders_file` | Optional. Path to folder organization file |
+
+### Running sync
+
+```bash
+# Full sync
+spotify_dl --sync --config sync_config.json
+
+# Dry run (preview what would happen)
+spotify_dl --sync --config sync_config.json --dry-run
+
+# Limit for testing
+spotify_dl --sync --config sync_config.json --limit-playlists 2 --limit 5
+```
+
+### CLI flags
+
+| Flag | Description |
+|------|-------------|
+| `--sync` | Enable sync mode |
+| `--config PATH` | Path to sync config file |
+| `--dry-run` | Preview changes without downloading |
+| `--limit N` | Max songs per playlist (for testing) |
+| `--limit-playlists N` | Max playlists to process (for testing) |
+
+## Folder Organization
+
+Organize playlists into folders using a `folders.json` file:
+
+```json
+{
+  "House": [
+    "Deep House Vibes",
+    "Tech House Essentials"
+  ],
+  "Bass": [
+    "Dubstep Bangers",
+    "DnB Favorites"
   ]
 }
 ```
 
-2. Run sync:
-
-```bash
-spotify_dl --sync                    # Sync with default config
-spotify_dl --sync --dry-run          # Preview changes without downloading
-spotify_dl --sync --config /path/to/config.json
+This creates a folder structure like:
+```
+output_dir/
+  House/
+    Deep House Vibes/
+      song1.mp3
+      song2.mp3
+    Tech House Essentials/
+      ...
+  Bass/
+    ...
 ```
 
-Features:
-- Downloads each song once to a cache, copies to playlist folders
-- Each playlist folder is self-contained (great for USB drives/DJ software)
-- Detects additions and removals from playlists
-- Incremental sync - only downloads new songs
+Playlists are matched by name from your Spotify library.
 
-### Demo
+## Automated Sync (Cron)
 
-[![asciicast](https://asciinema.org/a/488558.svg)](https://asciinema.org/a/488558)
+Example cron job for daily sync at 3am:
 
-### Contributing and Local development
+```bash
+# crontab -e
+0 3 * * * /path/to/sync_cron.sh >> /var/log/spotify_sync.log 2>&1
+```
 
-Pull requests and any contributions are always welcome. Please open an issue with your proposal before you start with something.
+See `sync_cron.sh` for an example script.
 
-#### Running tests
+## Known Limitations
 
-Tests are setup and run with pytest, run
+- **Japanese brackets in playlist names**: Spotify's API doesn't return playlists with certain Unicode characters like `「」` in their names. Workaround: rename the playlist to use standard characters.
 
-    make tests
+## Credits
 
-to run the tests with [Make](https://www.gnu.org/software/make/)
+This is a fork of [SathyaBhat/spotify-dl](https://github.com/SathyaBhat/spotify-dl). See the [original contributors](https://github.com/SathyaBhat/spotify-dl/graphs/contributors).
 
-### Thanks and Credits
+## License
 
-Take a look at [CONTRIBUTORS](https://github.com/SathyaBhat/spotify-dl/graphs/contributors) for a list of all people who have helped and contributed to the project.
-
-### Issues, Feedback, Contact details
-
-Feel free to raise any bugs/issues under Github issues. Pull requests are also more than welcome.
+MIT

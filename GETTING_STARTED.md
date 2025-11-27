@@ -2,10 +2,11 @@
 
 ### Pre-requisites
 
-You need Python 3.7+. To download songs as MP3, you will need ffmpeg.
+You need Python 3.8+. To download songs as MP3, you will need ffmpeg.
 
-- Linux users can get them by installing libav-tools by using apt-get `sudo apt-get install -y libav-tools`) or a package manager which comes with your distro
-- Windows users can download FFMPEG pre-built binaries from [here](http://ffmpeg.zeranoe.com/builds/). Extract the file using [7-zip](http://7-zip.org/) to a foldrer and [add the folder to your PATH environment variable](http://www.wikihow.com/Install-FFmpeg-on-Windows)
+- macOS: `brew install ffmpeg`
+- Linux: `sudo apt install ffmpeg` (Debian/Ubuntu) or use your distro's package manager
+- Windows: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
 
 1.  Install using pip
 
@@ -48,10 +49,7 @@ You need Python 3.7+. To download songs as MP3, you will need ffmpeg.
 
     - `download_directory` is the location where the songs must be downloaded to. If you give a `.` then it will download to the current directory.
 
-1.  To retrieve download songs as MP3, you will need to install ffmpeg. If you prefer to skip MP3 conversion, pass `-m` or `--skip_mp3` as a parameter when running the script
-
-    - Linux users can get them by installing libav-tools by using apt-get (`sudo apt-get install -y libav-tools`) if you're using a Debian/Ubuntu or a package manager which comes with your distro
-    - Windows users can download FFMPEG pre-built binaries from [here](http://ffmpeg.zeranoe.com/builds/). Extract the file using [7-zip](http://7-zip.org/) to a foldrer and [add the folder to your PATH environment variable](http://www.wikihow.com/Install-FFmpeg-on-Windows)
+1.  To retrieve download songs as MP3, you will need ffmpeg installed (see Pre-requisites above). If you prefer to skip MP3 conversion, pass `-m` or `--skip_mp3` as a parameter when running the script
 
 1.  If you prefer to skip MP3 conversion, pass `-m` or `--skip_mp3` as a parameter when running the script
 
