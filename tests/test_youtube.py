@@ -5,10 +5,18 @@ from pathlib import Path
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
+import pytest
 
 from spotify_dl import youtube as yt
 
+# Skip YouTube download tests in CI - downloads are rate limited/blocked
+skip_in_ci = pytest.mark.skipif(
+    os.environ.get("CI") == "true",
+    reason="YouTube downloads are unreliable in CI"
+)
 
+
+@skip_in_ci
 def test_download_one_false_skip():
 
     songs = {
@@ -66,6 +74,7 @@ def test_download_one_false_skip():
     )
 
 
+@skip_in_ci
 def test_download_one_true_skip():
     songs = {
         "urls": [
@@ -104,6 +113,7 @@ def test_download_one_true_skip():
     )
 
 
+@skip_in_ci
 def test_download_cover_none():
     songs = {
         "urls": [
