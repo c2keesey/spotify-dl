@@ -44,6 +44,36 @@ For more details and other arguments, issue `-h`
 
 See [the getting started guide](https://github.com/SathyaBhat/spotify-dl/blob/master/GETTING_STARTED.md) for more details.
 
+### Playlist Sync Mode
+
+Keep local directories in sync with your Spotify playlists. Useful for maintaining an offline music library (e.g., for DJ software).
+
+1. Create a config file `~/.spotify_dl_sync.json`:
+
+```json
+{
+  "output_dir": "~/Music/spotify-sync",
+  "playlists": [
+    "https://open.spotify.com/playlist/your_playlist_id_1",
+    "https://open.spotify.com/playlist/your_playlist_id_2"
+  ]
+}
+```
+
+2. Run sync:
+
+```bash
+spotify_dl --sync                    # Sync with default config
+spotify_dl --sync --dry-run          # Preview changes without downloading
+spotify_dl --sync --config /path/to/config.json
+```
+
+Features:
+- Downloads each song once to a cache, copies to playlist folders
+- Each playlist folder is self-contained (great for USB drives/DJ software)
+- Detects additions and removals from playlists
+- Incremental sync - only downloads new songs
+
 ### Demo
 
 [![asciicast](https://asciinema.org/a/488558.svg)](https://asciinema.org/a/488558)

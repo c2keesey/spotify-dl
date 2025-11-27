@@ -9,7 +9,7 @@ from pathlib import Path, PurePath
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
-from spotify_dl.constants import VERSION
+from spotify_dl.constants import VERSION, DEFAULT_SYNC_CONFIG
 from spotify_dl.scaffold import log, setLogLevel, console, get_tokens
 from spotify_dl.spotify import (
     fetch_tracks,
@@ -24,6 +24,7 @@ from spotify_dl.youtube import (
     playlist_num_filename,
     dump_json,
 )
+from spotify_dl.sync import run_sync
 
 
 def spotify_dl():
@@ -131,6 +132,22 @@ def spotify_dl():
         default="",
         help="Download through a proxy. Support HTTP & SOCKS5. Use 'http://username:password@hostname:port' or 'http://hostname:port'",
     )
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Run in sync mode to keep local directories in sync with Spotify playlists",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=DEFAULT_SYNC_CONFIG,
+        help=f"Path to sync config file (default: {DEFAULT_SYNC_CONFIG})",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be synced without making changes (only with --sync)",
+    )
     args = parser.parse_args()
     num_cores = os.cpu_count()
     args.multi_core = int(args.multi_core)
@@ -153,6 +170,11 @@ def spotify_dl():
         args.multi_core = num_cores - 1
     if args.version:
         console.print(f"spotify_dl [bold green]v{VERSION}[/bold green]")
+        sys.exit(0)
+
+    if args.sync:
+        log.info("Starting spotify_dl sync v%s", VERSION)
+        run_sync(args.config, dry_run=args.dry_run)
         sys.exit(0)
 
     if os.path.isfile(os.path.expanduser("~/.spotify_dl_settings")):

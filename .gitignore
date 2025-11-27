@@ -21,3 +21,16 @@ unins
 
 # macOS temporary files
 .DS_Store
+
+# Environment variables
+.env
+
+# Test/personal data
+test_sync_output/
+test_sync_config.json
+example_sync_config.json
+new_bass/
+new_bass_old/
+
+# Sync manifest
+.spotify_dl_manifest.json

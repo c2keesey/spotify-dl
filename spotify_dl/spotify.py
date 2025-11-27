@@ -44,12 +44,7 @@ def fetch_tracks(sp, item_type, item_id):
                     track_num = track_info.get("track_number")
                     track_name = track_info.get("name")
                     spotify_id = track_info.get("id")
-                    try:
-                        track_audio_data = sp.audio_analysis(spotify_id)
-                        tempo = track_audio_data.get("track").get("tempo")
-                    except:
-                        log.error("Couldn't fetch audio analysis for %s", track_name)
-                        tempo = None
+                    tempo = None
                     track_artist = ", ".join(
                         [artist["name"] for artist in track_info.get("artists")]
                     )
@@ -70,14 +65,14 @@ def fetch_tracks(sp, item_type, item_id):
                     main_artist_id = (
                         artists[0].get("uri", None) if len(artists) > 0 else None
                     )
-                    genres = (
-                        sp.artist(artist_id=main_artist_id).get("genres", [])
-                        if main_artist_id
-                        else []
-                    )
-                    if len(genres) > 0:
-                        genre = genres[0]
-                    else:
+                    genre = ""
+                    try:
+                        if main_artist_id:
+                            genres = sp.artist(artist_id=main_artist_id).get("genres", [])
+                            if len(genres) > 0:
+                                genre = genres[0]
+                    except Exception as e:
+                        log.debug(f"Failed to fetch genre for {track_name}: {e}")
                         genre = ""
                     songs_list.append(
                         {
@@ -132,14 +127,13 @@ def fetch_tracks(sp, item_type, item_id):
                     cover = album_info["images"][0]["url"]
                 else:
                     cover = None
-                if (
-                    len(sp.artist(artist_id=album_info["artists"][0]["uri"])["genres"])
-                    > 0
-                ):
-                    genre = sp.artist(artist_id=album_info["artists"][0]["uri"])[
-                        "genres"
-                    ][0]
-                else:
+                genre = ""
+                try:
+                    artist_genres = sp.artist(artist_id=album_info["artists"][0]["uri"])["genres"]
+                    if len(artist_genres) > 0:
+                        genre = artist_genres[0]
+                except Exception as e:
+                    log.debug(f"Failed to fetch genre for album {track_album}: {e}")
                     genre = ""
                 for item in items["items"]:
                     track_name = item.get("name")
@@ -148,12 +142,7 @@ def fetch_tracks(sp, item_type, item_id):
                     )
                     track_num = item["track_number"]
                     spotify_id = item.get("id")
-                    try:
-                        track_audio_data = sp.audio_analysis(spotify_id)
-                        tempo = track_audio_data.get("track").get("tempo")
-                    except:
-                        log.error("Couldn't fetch audio analysis for %s", track_name)
-                        tempo = None
+                    tempo = None
                     songs_list.append(
                         {
                             "name": track_name,
@@ -196,19 +185,18 @@ def fetch_tracks(sp, item_type, item_id):
             album_total = album_info.get("total_tracks")
         track_num = items["track_number"]
         spotify_id = items["id"]
-        try:
-            track_audio_data = sp.audio_analysis(spotify_id)
-            tempo = track_audio_data.get("track").get("tempo")
-        except:
-            log.error("Couldn't fetch audio analysis for %s", track_name)
-            tempo = None
+        tempo = None
         if len(items["album"]["images"]) > 0:
             cover = items["album"]["images"][0]["url"]
         else:
             cover = None
-        if len(sp.artist(artist_id=items["artists"][0]["uri"])["genres"]) > 0:
-            genre = sp.artist(artist_id=items["artists"][0]["uri"])["genres"][0]
-        else:
+        genre = ""
+        try:
+            artist_genres = sp.artist(artist_id=items["artists"][0]["uri"])["genres"]
+            if len(artist_genres) > 0:
+                genre = artist_genres[0]
+        except Exception as e:
+            log.debug(f"Failed to fetch genre for track {track_name}: {e}")
             genre = ""
         songs_list.append(
             {
