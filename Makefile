@@ -1,4 +1,5 @@
-.PHONY: tests clean
+.PHONY: tests clean sync
+
 default: tests
 
 clean:
@@ -10,3 +11,6 @@ tests: clean
 	pip install -e .
 	pip install pytest pytest-cov
 	pytest --cov=spotify_dl tests/
+
+sync:
+	uv run spotify_dl --sync --config sync_config.json

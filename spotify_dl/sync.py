@@ -165,9 +165,23 @@ def save_manifest(output_dir, manifest):
         raise
 
 
-def generate_filename(track):
-    """Generate filename using existing default_filename pattern."""
-    return default_filename(name=track["name"], artist=track["artist"])
+def generate_filename(track, max_bytes=200):
+    """
+    Generate filename using existing default_filename pattern.
+    Truncates to max_bytes to avoid filesystem limits (macOS: 255 bytes).
+    Leaves room for .mp3 extension and some buffer.
+    """
+    filename = default_filename(name=track["name"], artist=track["artist"])
+
+    # Truncate if too long (accounting for multibyte characters)
+    encoded = filename.encode('utf-8')
+    if len(encoded) > max_bytes:
+        # Truncate and decode safely
+        truncated = encoded[:max_bytes].decode('utf-8', errors='ignore')
+        # Remove any partial character at the end
+        filename = truncated.rstrip()
+
+    return filename
 
 
 def download_to_cache(track, cache_dir, config):
@@ -198,6 +212,7 @@ def download_to_cache(track, cache_dir, config):
             file_name_f=default_filename,
             multi_core=0,
             proxy=config.get("proxy", ""),
+            cookies_from_browser=config.get("cookies_from_browser"),
         )
         if file_path.exists():
             return filename
