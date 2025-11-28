@@ -47,3 +47,9 @@ Homepage = "https://github.com/SathyaBhat/spotify-dl/"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=5.0.0",
+]

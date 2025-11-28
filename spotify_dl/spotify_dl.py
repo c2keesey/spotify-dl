@@ -186,7 +186,7 @@ def spotify_dl():
 
     if args.sync:
         log.info("Starting spotify_dl sync v%s", VERSION)
-        run_sync(args.config, dry_run=args.dry_run, limit=args.limit, limit_playlists=args.limit_playlists)
+        run_sync(args.config, dry_run=args.dry_run, limit=args.limit, limit_playlists=args.limit_playlists, multi_core=args.multi_core)
         sys.exit(0)
 
     if os.path.isfile(os.path.expanduser("~/.spotify_dl_settings")):
