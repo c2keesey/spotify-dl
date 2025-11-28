@@ -184,20 +184,39 @@ def generate_filename(track, max_bytes=200):
     return filename
 
 
-def download_to_cache(track, cache_dir, config):
+def download_to_cache_batch(tracks, cache_dir, config, multi_core=0):
     """
-    Download a single song to cache directory.
-    Returns the filename if successful, None otherwise.
+    Download multiple songs to cache directory using multi-core support.
+    Returns dict mapping spotify_id -> filename for successful downloads.
+
+    Args:
+        tracks: List of (spotify_id, track_dict) tuples
+        cache_dir: Path to cache directory
+        config: Sync configuration dict
+        multi_core: Number of CPU cores to use (0 = single core)
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
-    filename = generate_filename(track) + ".mp3"
-    file_path = cache_dir / filename
 
-    if file_path.exists():
-        log.info("Already in cache: %s", filename)
-        return filename
+    # Filter out tracks already in cache
+    to_download = []
+    results = {}
+    for spotify_id, track in tracks:
+        filename = generate_filename(track) + ".mp3"
+        file_path = cache_dir / filename
+        if file_path.exists():
+            log.info("Already in cache: %s", filename)
+            results[spotify_id] = filename
+        else:
+            to_download.append((spotify_id, track, filename))
 
-    songs_data = {"urls": [{"save_path": cache_dir, "songs": [track]}]}
+    if not to_download:
+        return results
+
+    # Prepare batch for download_songs
+    songs_list = [track for _, track, _ in to_download]
+    songs_data = {"urls": [{"save_path": cache_dir, "songs": songs_list}]}
+
+    log.info("Downloading %d songs with %d cores", len(to_download), multi_core or 1)
 
     try:
         download_songs(
@@ -210,21 +229,25 @@ def download_to_cache(track, cache_dir, config):
             remove_trailing_tracks="n",
             use_sponsorblock=config.get("use_sponsorblock", "no"),
             file_name_f=default_filename,
-            multi_core=0,
+            multi_core=multi_core,
             proxy=config.get("proxy", ""),
             cookies_from_browser=config.get("cookies_from_browser"),
         )
+    except Exception as e:
+        log.error("Batch download error: %s", e)
+
+    # Check which downloads succeeded
+    for spotify_id, track, filename in to_download:
+        file_path = cache_dir / filename
         if file_path.exists():
-            return filename
+            results[spotify_id] = filename
         else:
             log.warning("Download may have failed for: %s", track["name"])
-            return None
-    except Exception as e:
-        log.error("Failed to download %s: %s", track["name"], e)
-        return None
+
+    return results
 
 
-def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0):
+def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=0):
     """
     Main sync function.
     Fetches current playlist state from Spotify and syncs local directories.
@@ -234,6 +257,7 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0):
         dry_run: If True, show what would happen without making changes
         limit: Max songs to download (0 = no limit)
         limit_playlists: Max playlists to process (0 = no limit)
+        multi_core: Number of CPU cores for parallel downloads (0 = single core)
     """
     config = load_config(config_path)
     output_dir = Path(config["output_dir"])
@@ -415,30 +439,32 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0):
         log.info("\nDry run complete. No changes made.")
         return
 
-    # Phase 1: Download new songs to cache (respects limit)
-    downloaded_count = 0
-    limit_reached = False
-
+    # Phase 1: Collect all songs needing download, then batch download
+    all_downloads = []
     for playlist_id, action in actions.items():
-        if limit_reached:
-            break
         for sid in action["needs_download"]:
-            if limit and downloaded_count >= limit:
-                limit_reached = True
-                log.info("Download limit of %d reached, stopping downloads", limit)
-                break
             track = action["songs"][sid]
-            log.info("Downloading: %s - %s", track["artist"], track["name"])
-            filename = download_to_cache(track, cache_dir, config)
-            if filename:
-                downloaded_count += 1
-                manifest["cache"][sid] = {
-                    "name": track["name"],
-                    "artist": track["artist"],
-                    "filename": filename,
-                    "downloaded_at": datetime.now().isoformat(),
-                }
-                save_manifest(output_dir, manifest)
+            all_downloads.append((sid, track))
+
+    # Apply download limit
+    if limit and len(all_downloads) > limit:
+        log.info("Limiting downloads to %d (of %d needed)", limit, len(all_downloads))
+        all_downloads = all_downloads[:limit]
+
+    # Batch download with multi-core support
+    if all_downloads:
+        downloaded = download_to_cache_batch(all_downloads, cache_dir, config, multi_core)
+
+        # Update manifest with successful downloads
+        for sid, filename in downloaded.items():
+            track = next(t for s, t in all_downloads if s == sid)
+            manifest["cache"][sid] = {
+                "name": track["name"],
+                "artist": track["artist"],
+                "filename": filename,
+                "downloaded_at": datetime.now().isoformat(),
+            }
+        save_manifest(output_dir, manifest)
 
     # Phase 2: Copy cached songs to playlist folders & cleanup
     for playlist_id, action in actions.items():
