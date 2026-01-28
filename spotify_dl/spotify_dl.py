@@ -133,6 +133,14 @@ def spotify_dl():
         help="Download through a proxy. Support HTTP & SOCKS5. Use 'http://username:password@hostname:port' or 'http://hostname:port'",
     )
     parser.add_argument(
+        "-b",
+        "--cookies-from-browser",
+        action="store",
+        type=str,
+        default="",
+        help="Browser to extract cookies from (e.g., chrome, firefox, safari)",
+    )
+    parser.add_argument(
         "--sync",
         action="store_true",
         help="Run in sync mode to keep local directories in sync with Spotify playlists",
@@ -263,6 +271,7 @@ def spotify_dl():
             file_name_f=file_name_f,
             multi_core=args.multi_core,
             proxy=args.proxy,
+            cookies_from_browser=args.cookies_from_browser,
         )
     log.info("Download completed in %.2f seconds.", time.time() - start_time)
 

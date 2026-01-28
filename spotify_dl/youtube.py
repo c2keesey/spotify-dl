@@ -339,7 +339,7 @@ def find_and_download_songs(kwargs):
                 "default_search": "ytsearch",
                 "format": "bestaudio/best",
                 "outtmpl": outtmpl,
-                "postprocessors": sponsorblock_postprocessor,
+                "postprocessors": sponsorblock_postprocessor.copy(),
                 "noplaylist": True,
                 "no_color": False,
                 "postprocessor_args": [
