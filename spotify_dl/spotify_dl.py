@@ -24,7 +24,7 @@ from spotify_dl.youtube import (
     playlist_num_filename,
     dump_json,
 )
-from spotify_dl.sync import run_sync
+from spotify_dl.sync import run_sync, run_repair
 
 
 def spotify_dl():
@@ -160,6 +160,11 @@ def spotify_dl():
         default=0,
         help="Limit number of playlists to process (0 = no limit, only with --sync)",
     )
+    parser.add_argument(
+        "--repair",
+        action="store_true",
+        help="Copy cached songs to playlists without downloading (use with --config)",
+    )
     args = parser.parse_args()
     num_cores = os.cpu_count()
     args.multi_core = int(args.multi_core)
@@ -187,6 +192,11 @@ def spotify_dl():
     if args.sync:
         log.info("Starting spotify_dl sync v%s", VERSION)
         run_sync(args.config, dry_run=args.dry_run, limit=args.limit, limit_playlists=args.limit_playlists, multi_core=args.multi_core)
+        sys.exit(0)
+
+    if args.repair:
+        log.info("Starting spotify_dl repair v%s", VERSION)
+        run_repair(args.config, dry_run=args.dry_run)
         sys.exit(0)
 
     if os.path.isfile(os.path.expanduser("~/.spotify_dl_settings")):

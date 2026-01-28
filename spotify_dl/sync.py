@@ -439,39 +439,30 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
         log.info("\nDry run complete. No changes made.")
         return
 
-    # Phase 1: Collect all songs needing download, then batch download
+    # Build mapping: spotify_id -> list of (playlist_id, track) for songs needing download
+    song_to_playlists = {}
     all_downloads = []
     for playlist_id, action in actions.items():
         for sid in action["needs_download"]:
             track = action["songs"][sid]
-            all_downloads.append((sid, track))
+            if sid not in song_to_playlists:
+                song_to_playlists[sid] = []
+                all_downloads.append((sid, track))
+            song_to_playlists[sid].append(playlist_id)
 
     # Apply download limit
     if limit and len(all_downloads) > limit:
         log.info("Limiting downloads to %d (of %d needed)", limit, len(all_downloads))
         all_downloads = all_downloads[:limit]
+        # Update song_to_playlists to only include limited songs
+        limited_sids = {sid for sid, _ in all_downloads}
+        song_to_playlists = {k: v for k, v in song_to_playlists.items() if k in limited_sids}
 
-    # Batch download with multi-core support
-    if all_downloads:
-        downloaded = download_to_cache_batch(all_downloads, cache_dir, config, multi_core)
-
-        # Update manifest with successful downloads
-        for sid, filename in downloaded.items():
-            track = next(t for s, t in all_downloads if s == sid)
-            manifest["cache"][sid] = {
-                "name": track["name"],
-                "artist": track["artist"],
-                "filename": filename,
-                "downloaded_at": datetime.now().isoformat(),
-            }
-        save_manifest(output_dir, manifest)
-
-    # Phase 2: Copy cached songs to playlist folders & cleanup
+    # First, copy any songs already in cache to their playlists
     for playlist_id, action in actions.items():
         playlist_dir = action["playlist_dir"]
         playlist_dir.mkdir(parents=True, exist_ok=True)
-
-        for sid in action["to_add"]:
+        for sid in action["needs_copy"]:
             if sid not in manifest["cache"]:
                 continue
             filename = manifest["cache"][sid]["filename"]
@@ -480,6 +471,46 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
             if src.exists() and not dst.exists():
                 log.info("Copying to %s: %s", action["playlist_name"], filename)
                 shutil.copy2(src, dst)
+
+    # Batch download and copy - process in chunks
+    batch_size = config.get("batch_size", 25)
+    total_batches = (len(all_downloads) + batch_size - 1) // batch_size if all_downloads else 0
+
+    for batch_num in range(total_batches):
+        batch_start = batch_num * batch_size
+        batch_end = min(batch_start + batch_size, len(all_downloads))
+        batch = all_downloads[batch_start:batch_end]
+
+        log.info("Processing batch %d/%d (%d songs)", batch_num + 1, total_batches, len(batch))
+
+        # Download this batch
+        downloaded = download_to_cache_batch(batch, cache_dir, config, multi_core)
+
+        # Update manifest and copy to playlists for this batch
+        for sid, filename in downloaded.items():
+            track = next(t for s, t in batch if s == sid)
+            manifest["cache"][sid] = {
+                "name": track["name"],
+                "artist": track["artist"],
+                "filename": filename,
+                "downloaded_at": datetime.now().isoformat(),
+            }
+
+            # Copy to all playlists that need this song
+            src = cache_dir / filename
+            for playlist_id in song_to_playlists.get(sid, []):
+                playlist_dir = actions[playlist_id]["playlist_dir"]
+                playlist_dir.mkdir(parents=True, exist_ok=True)
+                dst = playlist_dir / filename
+                if src.exists() and not dst.exists():
+                    log.info("Copying to %s: %s", actions[playlist_id]["playlist_name"], filename)
+                    shutil.copy2(src, dst)
+
+        save_manifest(output_dir, manifest)
+
+    # Final phase: cleanup removals and update playlist metadata
+    for playlist_id, action in actions.items():
+        playlist_dir = action["playlist_dir"]
 
         for sid in action["to_remove"]:
             if sid in manifest["cache"]:
@@ -496,3 +527,105 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
         save_manifest(output_dir, manifest)
 
     log.info("Sync complete!")
+
+
+def run_repair(config_path, dry_run=False):
+    """
+    Repair function: copy cached songs to playlists without downloading.
+    Useful for recovering from interrupted syncs or re-sorting existing cache.
+    """
+    config = load_config(config_path)
+    output_dir = Path(config["output_dir"])
+
+    if not output_dir.exists():
+        log.error("Output directory does not exist: %s", output_dir)
+        sys.exit(1)
+
+    manifest = load_manifest(output_dir)
+    cache_dir = output_dir / ".cache"
+
+    if not manifest.get("cache"):
+        log.info("No songs in cache, nothing to repair")
+        return
+
+    tokens = get_tokens()
+    if tokens is None:
+        sys.exit(1)
+    client_id, client_secret = tokens
+
+    sp = spotipy.Spotify(
+        auth_manager=SpotifyClientCredentials(
+            client_id=client_id, client_secret=client_secret
+        )
+    )
+
+    # Get playlists from manifest
+    if not manifest.get("playlists"):
+        log.info("No playlists in manifest, nothing to repair")
+        return
+
+    folder_mapping = config.get("_folder_mapping", {})
+    total_copied = 0
+    total_missing = 0
+
+    log.info("Checking %d playlists against %d cached songs",
+             len(manifest["playlists"]), len(manifest["cache"]))
+
+    for playlist_id, playlist_info in manifest["playlists"].items():
+        playlist_name = playlist_info.get("name", "Unknown")
+        folder = get_playlist_folder(playlist_name, folder_mapping)
+
+        if folder:
+            playlist_dir = output_dir / sanitize(folder) / sanitize(playlist_name)
+        else:
+            playlist_dir = output_dir / sanitize(playlist_name)
+
+        # Fetch current tracks from Spotify
+        try:
+            tracks = fetch_tracks(sp, "playlist", playlist_id)
+            current_songs = {t["spotify_id"]: t for t in tracks}
+        except Exception as e:
+            log.warning("Could not fetch playlist %s: %s", playlist_name, e)
+            continue
+
+        # Find songs that are in cache but not in playlist folder
+        copied_this_playlist = 0
+        for sid in current_songs:
+            if sid not in manifest["cache"]:
+                continue
+
+            filename = manifest["cache"][sid]["filename"]
+            src = cache_dir / filename
+            dst = playlist_dir / filename
+
+            if not src.exists():
+                total_missing += 1
+                continue
+
+            if dst.exists():
+                continue
+
+            if dry_run:
+                log.info("[DRY RUN] Would copy to %s: %s", playlist_name, filename)
+                copied_this_playlist += 1
+            else:
+                playlist_dir.mkdir(parents=True, exist_ok=True)
+                log.info("Copying to %s: %s", playlist_name, filename)
+                shutil.copy2(src, dst)
+                copied_this_playlist += 1
+
+        if copied_this_playlist > 0:
+            total_copied += copied_this_playlist
+            if not dry_run:
+                # Update manifest
+                manifest["playlists"][playlist_id]["songs"] = list(current_songs.keys())
+                manifest["playlists"][playlist_id]["last_synced"] = datetime.now().isoformat()
+                save_manifest(output_dir, manifest)
+
+    if dry_run:
+        log.info("Dry run complete. Would copy %d files.", total_copied)
+    else:
+        log.info("Repair complete. Copied %d files.", total_copied)
+
+    if total_missing > 0:
+        log.warning("%d cached entries have missing files in cache", total_missing)
