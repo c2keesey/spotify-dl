@@ -3,6 +3,9 @@
 
 set -e
 
+# Cron has a minimal PATH; yt-dlp needs deno (homebrew) for YouTube JS challenges
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="$SCRIPT_DIR/logs/sync.log"
 CONFIG_FILE="$SCRIPT_DIR/sync_config.json"
@@ -42,7 +45,7 @@ echo "$(date): Using uv at $UV_PATH" >> "$LOG_FILE"
 
 # Run sync
 cd "$SCRIPT_DIR"
-$UV_PATH run spotify_dl --sync --config "$CONFIG_FILE" >> "$LOG_FILE" 2>&1
+$UV_PATH run spotify_dl --sync --config "$CONFIG_FILE" -mc 4 >> "$LOG_FILE" 2>&1
 
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 0 ]; then
