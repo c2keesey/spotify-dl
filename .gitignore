@@ -44,3 +44,6 @@ logs/
 
 # One-off download outputs moved out of repo root
 old_downloads/
+
+# Web UI one-off downloads
+downloads/
