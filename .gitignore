@@ -41,3 +41,6 @@ folders.json
 # Sync output and logs
 sync_output/
 logs/
+
+# One-off download outputs moved out of repo root
+old_downloads/
