@@ -77,8 +77,11 @@ def start_download(req: DownloadRequest):
     urls = [u.strip() for u in req.urls if u.strip()]
     if not urls:
         raise HTTPException(400, "no urls")
-    output = req.output.strip() or str(DEFAULT_OUTPUT)
-    Path(output).expanduser().mkdir(parents=True, exist_ok=True)
+    path = Path(req.output.strip() or DEFAULT_OUTPUT).expanduser()
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    output = str(path)
+    path.mkdir(parents=True, exist_ok=True)
     job = {
         "id": next(job_ids),
         "urls": urls,

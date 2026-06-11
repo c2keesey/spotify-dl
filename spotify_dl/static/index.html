@@ -57,7 +57,27 @@
     gap: 12px;
     padding: 10px 12px 12px 18px;
   }
-  .bar .hint { font-size: 12px; color: var(--faint); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .where {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--faint);
+    font-size: 12px;
+  }
+  .bar .where input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--dim);
+    font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+    padding: 4px 0;
+  }
+  .bar .where input::placeholder { color: var(--faint); }
+  .bar .where input:focus { color: var(--text); }
   button {
     background: var(--accent);
     color: #04130a;
@@ -208,7 +228,10 @@
   <div class="card">
     <textarea id="links" placeholder="Paste Spotify or SoundCloud links, one per line" spellcheck="false"></textarea>
     <div class="bar">
-      <div class="hint" id="hint">saves to downloads/</div>
+      <label class="where" title="Output folder">
+        <span>save to</span>
+        <input id="outdir" placeholder="downloads/" spellcheck="false" autocomplete="off">
+      </label>
       <button id="go">Download</button>
     </div>
   </div>
@@ -236,11 +259,13 @@ $("go").onclick = async () => {
   const urls = $("links").value.split("\n").map((s) => s.trim()).filter(Boolean);
   if (!urls.length) return;
   $("go").disabled = true;
+  const output = $("outdir").value.trim();
+  localStorage.setItem("outdir", output);
   try {
     const r = await fetch("/api/download", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
+      body: JSON.stringify({ urls, output }),
     });
     if (r.ok) {
       const { id } = await r.json();
@@ -358,6 +383,7 @@ async function refreshCrons() {
     </div>`).join("");
 }
 
+$("outdir").value = localStorage.getItem("outdir") || "";
 refreshJobs();
 refreshCrons();
 setInterval(refreshJobs, 1500);
