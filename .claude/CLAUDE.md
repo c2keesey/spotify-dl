@@ -4,142 +4,86 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-spotify-dl downloads songs from Spotify playlists, albums, or tracks by fetching metadata from the Spotify API and downloading audio from YouTube using yt-dlp. It supports MP3 conversion with metadata tagging, parallel downloads, and optional SponsorBlock integration.
+spotify-dl downloads songs from Spotify playlists, albums, or tracks by fetching metadata from the Spotify API and downloading audio from YouTube using yt-dlp. Personal fork of SathyaBhat/spotify-dl (upstream is dormant since July 2024; this fork is ahead of it) with added playlist-sync mode for offline DJ libraries.
+
+Issue tracking uses beads (`bd`) — see AGENTS.md for the session workflow.
+
+## Critical Runtime Requirements
+
+- **deno must be installed** (`brew install deno`). yt-dlp requires a JS runtime to solve YouTube's signature challenges, and deno is the only runtime it enables by default. Without it, every download fails ("Signature solving failed", 403s, or empty output folders).
+- **Do NOT use browser cookies** (`-b`/`--cookies-from-browser` or `cookies_from_browser` in sync config). Logged-in YouTube sessions require PO tokens yt-dlp can't generate, so cookies cause HTTP 403 on every download. The flag exists but should stay unused unless YouTube's behavior changes.
+- **Don't loosen the dependency pins.** `urllib3>=2.0.2` and `yt-dlp[default]>=2025.11` in pyproject.toml are load-bearing: an old `urllib3~=1.26` pin once silently held yt-dlp at a 2024 version that could no longer download from YouTube at all. `yt-dlp[default]` pulls in `yt-dlp-ejs` (the challenge-solver scripts). Keep yt-dlp current when downloads start failing.
 
 ## Development Setup
 
 ### Package Management
-- Use `uv` for all Python operations (not pip)
-- Install dependencies: `uv add <package>` instead of `pip install`
-- Install in editable mode: `pip install -e .` (for now, as shown in Makefile)
+- Use `uv` for all Python operations (`uv sync`, `uv add`, `uv run`)
+- Requires Python >=3.10
 
 ### Environment Variables
-Required Spotify API credentials (get from https://developer.spotify.com/dashboard):
+Spotify API credentials live in `.env` (gitignored), loaded via `set -a && source .env && set +a` or by sync_cron.sh:
 ```bash
-export SPOTIPY_CLIENT_ID='your-spotify-client-id'
-export SPOTIPY_CLIENT_SECRET='your-spotify-client-secret'
+SPOTIPY_CLIENT_ID / SPOTIPY_CLIENT_SECRET
 ```
 
-### Running Tests
+### Tests and Lint
 ```bash
-make tests          # Run all tests with coverage
-pytest tests/       # Run tests directly
-```
-
-The Makefile also runs `make clean` first to remove cached files and test artifacts.
-
-### Linting
-```bash
+make tests          # clean + pytest with coverage
+pytest tests/       # directly
+pytest tests/test_youtube.py -k test_name   # single test
 flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 ```
+Tests require Spotify credentials in the environment and ffmpeg installed.
 
-### Running the Application
+### Running Downloads
 ```bash
-spotify_dl -l <playlist_url> -o <output_directory>
-spotify_dl -mc 4 -l <playlist_url>  # Parallel download with 4 cores
-spotify_dl -s y -l <playlist_url>   # Enable SponsorBlock
+# One-off playlist download (creates a subfolder named after the playlist under -o)
+uv run spotify_dl -l <playlist_url> -o <output_dir> -mc 4 -w
+
+# Playlist sync using folders.json mapping
+uv run spotify_dl --sync --config sync_config.json -mc 4
+
+# Test sync with limits / dry run
+uv run spotify_dl --sync --config sync_config.json --limit-playlists 2 --limit 5
+uv run spotify_dl --sync --config sync_config.json --dry-run
+
+# Repair: reconcile manifest against what's actually on disk
+uv run spotify_dl --repair --config sync_config.json --dry-run
 ```
+Key flags: `-mc N` parallel download processes, `-w` no-overwrite, `-l` accepts multiple URLs in one run.
 
-### Running Playlist Sync
-```bash
-# Full sync using folders.json playlist mapping
-spotify_dl --sync --config sync_config.json
-
-# Test with limits
-spotify_dl --sync --config sync_config.json --limit-playlists 2 --limit 5
-
-# Dry run (show what would happen)
-spotify_dl --sync --config sync_config.json --dry-run
-```
-
-Config file (`sync_config.json`):
-```json
-{
-  "output_dir": "/path/to/output",
-  "spotify_user_id": "your_spotify_user_id",
-  "folders_file": "folders.json"
-}
-```
-
-Cron job runs at 3am daily via `sync_cron.sh`.
+### Nightly Sync (currently DISABLED)
+`sync_cron.sh` is the 3am cron entry point, but the crontab line is commented out (`# DISABLED: 0 3 * * * ...`) — the feature isn't active yet. The script exports `/opt/homebrew/bin` onto PATH (cron's minimal PATH can't find deno otherwise), loads `.env`, and runs sync with `-mc 4`, logging to `logs/sync.log`. Re-enable by uncommenting in `crontab -e`.
 
 ## Architecture
 
 ### Core Flow
-1. **CLI Entry** (`spotify_dl.py`): Parses arguments and orchestrates the download process
-2. **Spotify Metadata** (`spotify.py`): Fetches track information from Spotify API
-3. **YouTube Search & Download** (`youtube.py`): Searches YouTube Music using ytmusicapi, downloads with yt-dlp
-4. **Tagging** (`youtube.py`): Applies ID3 tags and album art to downloaded MP3s
-5. **Playlist Sync** (`sync.py`): Keeps local directories in sync with Spotify playlists
+1. **CLI Entry** (`spotify_dl.py`): Parses arguments; dispatches to download, sync, or repair mode
+2. **Spotify Metadata** (`spotify.py`): Fetches track information from Spotify API (paginated)
+3. **YouTube Search & Download** (`youtube.py`): Searches YouTube Music via ytmusicapi, picks the best match by Levenshtein distance (`utils.py`), downloads with yt-dlp, converts to MP3, applies ID3 tags + album art
+4. **Playlist Sync** (`sync.py`): Keeps local directories in sync with Spotify playlists
 
-### Key Modules
-
-**spotify.py**
-- `fetch_tracks()`: Retrieves track metadata from Spotify (handles playlists, albums, tracks)
-- `parse_spotify_url()`: Parses Spotify URLs to extract item type and ID
-- Uses pagination for large playlists (offset-based)
-- Fetches genre from artist info
-
-**youtube.py**
-- `download_songs()`: Main download orchestrator, creates reference CSV file
-- `find_and_download_songs()`: Core download logic using ytmusicapi for search
-- `multicore_find_and_download_songs()`: Divides work across CPU cores
-- Uses Levenshtein distance (`utils.py`) to find best YouTube Music match
-- `set_tags()`: Applies MP3 metadata (album art, genre, track number, BPM)
-
-**scaffold.py**
-- Logging setup with Rich library
-- `get_tokens()`: Validates environment variables for Spotify credentials
-- Sentry SDK integration for error tracking
-
-**utils.py**
-- `sanitize()`: Removes filesystem-reserved characters from filenames
-- `get_closest_match()`: Levenshtein-based fuzzy matching for search results
-
-**sync.py**
-- `run_sync()`: Main sync orchestrator - compares Spotify playlists with local state
-- `load_config()` / `load_manifest()` / `save_manifest()`: Config and state management
-- `download_to_cache()`: Downloads songs to cache directory
-- `fetch_user_playlists()`: Fetches all playlists for a Spotify user
-- `find_playlist_by_name()`: Looks up playlist by name from user's playlists
-- Uses manifest file (`.spotify_dl_manifest.json`) to track downloaded songs, playlist membership, and cached playlist URLs
-- Copies files from cache to each playlist folder for self-contained directories
-- Supports folder organization via `folders.json` mapping (folder → playlist names)
-- Supports `--limit` (max songs) and `--limit-playlists` (max playlists) for testing
-
-### Data Flow
-1. Parse Spotify URLs → validate item types (playlist/album/track)
-2. Fetch track metadata from Spotify API (name, artist, album, year, etc.)
-3. Write tracks to CSV reference file (`downloaded_songs.txt`)
-4. For each track:
-   - Search YouTube Music using ytmusicapi
-   - Use Levenshtein distance to pick best match
-   - Download with yt-dlp
-   - Convert to MP3 (optional)
-   - Apply ID3 tags and album art
+### Sync Mode (`sync.py`)
+- `run_sync()` compares Spotify playlists against a manifest file (`.spotify_dl_manifest.json`) tracking downloaded songs, playlist membership, and cached playlist URLs
+- Songs download once to a cache directory, then are **copied** into each playlist folder so folders are self-contained
+- `folders.json` maps folder names → playlist names; playlists are looked up by name from the configured `spotify_user_id`
+- Downloads happen in batches (`batch_size` config, default 25) — batching is for manifest checkpointing, not parallelism; parallelism comes from `-mc`
+- `run_repair()` reconciles the manifest when it drifts from disk (e.g. manifest says synced but folders are empty after failed download eras)
 
 ### Multiprocessing
-When `-mc` flag is used:
-- Divides song list among CPU cores
-- Each process gets its own reference file segment
-- Processes run in parallel using `multiprocessing.Process`
+`-mc N` splits the song list statically across N `multiprocessing.Process` workers (capped at cores-1). Each worker writes a numbered temp reference file (`0.txt`, `1.txt`, …) in the CWD — leftover numbered .txt files in the repo root are debris from interrupted runs and safe to delete.
 
-## Key Dependencies
-- `spotipy`: Spotify API client
-- `yt-dlp`: YouTube downloader (fork of youtube-dl)
-- `ytmusicapi`: YouTube Music search
-- `mutagen`: MP3 metadata tagging
-- `Levenshtein`: Fuzzy string matching
-- `rich`: Terminal UI (progress bars, formatting)
+### Fork-Specific Behavior (not in upstream)
+- WebM orphan recovery: failed MP3 conversions are retried from leftover .webm files
+- Postprocessor lists are `.copy()`ed per song (upstream has a shared-list mutation bug)
+- Search results without an artist are filtered out before Levenshtein matching
 
-## Testing Notes
-Tests require:
-- Spotify API credentials in environment
-- ffmpeg installed (`sudo apt install ffmpeg` on Ubuntu)
-- Test files are in `tests/` directory
+## Repo Layout Notes
+- `sync_output/` — the sync target (gitignored, large); organized as `<folder>/<playlist>/` per folders.json
+- `old_downloads/` — holding pen for one-off download outputs that used to litter the repo root (gitignored)
+- `sync_config.json`, `folders.json`, `.env` — local config, all gitignored (see `example_sync_config.json`)
 
 ## Known Issues
 
 ### Spotify API not returning some playlists
-Playlists with Japanese brackets `「」` and some special Unicode characters are not returned by the Spotify `user_playlists()` API, even though they exist and are public. This appears to be a Spotify API limitation. Affected playlists will show "Could not find playlist" during sync. Workaround: rename the playlist to use standard characters.
+Playlists with Japanese brackets `「」` and some special Unicode characters are not returned by the Spotify `user_playlists()` API, even though they exist and are public. Affected playlists show "Could not find playlist" during sync. Workaround: rename the playlist to use standard characters.
