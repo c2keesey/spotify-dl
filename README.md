@@ -10,6 +10,7 @@ Downloads songs from Spotify playlists, albums, or tracks by fetching metadata a
 - **Folder Organization**: Group playlists into folders via `folders.json` mapping
 - **Playlist Lookup by Name**: Reference playlists by name instead of URLs
 - **Cron-friendly**: Designed for automated daily syncs
+- **SoundCloud support**: Pass SoundCloud track or set URLs to `-l` alongside Spotify URLs
 
 ## Prerequisites
 

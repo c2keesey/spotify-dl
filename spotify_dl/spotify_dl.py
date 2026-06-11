@@ -25,6 +25,7 @@ from spotify_dl.youtube import (
     dump_json,
 )
 from spotify_dl.sync import run_sync, run_repair
+from spotify_dl.soundcloud import is_soundcloud_url, download_soundcloud
 
 
 def spotify_dl():
@@ -223,6 +224,24 @@ def spotify_dl():
     if not args.url:
         raise (Exception("No playlist url provided:"))
 
+    log.debug("Arguments: %s ", args)
+    start_time = time.time()
+
+    soundcloud_urls = [url for url in args.url if is_soundcloud_url(url)]
+    spotify_urls = [url for url in args.url if not is_soundcloud_url(url)]
+
+    for url in soundcloud_urls:
+        download_soundcloud(
+            url,
+            output_dir=args.output,
+            skip_mp3=args.skip_mp3,
+            no_overwrites=args.no_overwrites,
+            proxy=args.proxy,
+        )
+    if not spotify_urls:
+        log.info("Download completed in %.2f seconds.", time.time() - start_time)
+        sys.exit(0)
+
     tokens = get_tokens()
     if tokens is None:
         sys.exit(1)
@@ -233,14 +252,12 @@ def spotify_dl():
             client_id=client_id, client_secret=client_secret
         )
     )
-    log.debug("Arguments: %s ", args)
     log.info("Sponsorblock enabled?: %s", args.use_sponsorblock)
-    valid_urls = validate_spotify_urls(args.url)
+    valid_urls = validate_spotify_urls(spotify_urls)
     if not valid_urls:
         sys.exit(1)
 
     url_data = {"urls": []}
-    start_time = time.time()
     for url in valid_urls:
         url_dict = {}
         item_type, item_id = parse_spotify_url(url)
