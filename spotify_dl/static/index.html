@@ -102,22 +102,50 @@
   .dot.failed { background: var(--red); }
   .dot.off { background: var(--faint); }
   @keyframes pulse { 50% { opacity: 0.3; } }
+  .job-main { flex: 1; min-width: 0; }
   .job-title {
-    flex: 1;
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 13px;
   }
-  .job-last {
+  .job-sub {
     color: var(--dim);
     font-size: 11.5px;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    max-width: 45%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin-top: 1px;
+    min-height: 17px;
+  }
+  .job-count {
+    flex: none;
+    font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .job-count.done { color: var(--accent); }
+  .job-count.failed { color: var(--red); }
+  .job-bar {
+    height: 3px;
+    margin: -2px 18px 13px 37px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .job-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.7s ease;
+  }
+  .job-fill.indet {
+    width: 30%;
+    animation: slide 1.3s ease-in-out infinite;
+  }
+  @keyframes slide {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(370%); }
   }
   .job-log {
     display: none;
@@ -171,7 +199,6 @@
     padding: 2px 6px;
   }
   .cron.dim { opacity: 0.45; }
-  .cron.mine .sched { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -195,7 +222,7 @@
   <section>
     <h2>Crons</h2>
     <div class="card" id="crons-card" hidden><div id="crons"></div></div>
-    <div class="empty" id="crons-empty">No crontab entries.</div>
+    <div class="empty" id="crons-empty">No spotify-dl crons.</div>
   </section>
 </div>
 
@@ -252,9 +279,13 @@ async function refreshJobs() {
       el.innerHTML = `
         <div class="job-row">
           <div class="dot"></div>
-          <div class="job-title"></div>
-          <div class="job-last"></div>
+          <div class="job-main">
+            <div class="job-title"></div>
+            <div class="job-sub"></div>
+          </div>
+          <div class="job-count"></div>
         </div>
+        <div class="job-bar" hidden><div class="job-fill"></div></div>
         <div class="job-log"></div>`;
       el.querySelector(".job-row").onclick = () => {
         open.has(j.id) ? open.delete(j.id) : open.add(j.id);
@@ -267,8 +298,39 @@ async function refreshJobs() {
     el.classList.toggle("open", open.has(j.id));
     el.querySelector(".dot").className = "dot " + j.status;
     el.querySelector(".job-title").textContent = j.urls.map(shortUrl).join(", ");
-    el.querySelector(".job-last").textContent = j.status === "running" ? j.last : j.status;
+    renderStatus(el, j);
     if (open.has(j.id) && j.status === "running") fetchLog(j.id);
+  }
+}
+
+function renderStatus(el, j) {
+  const p = j.progress;
+  const sub = el.querySelector(".job-sub");
+  const count = el.querySelector(".job-count");
+  const bar = el.querySelector(".job-bar");
+  const fill = el.querySelector(".job-fill");
+
+  if (j.status === "running") {
+    bar.hidden = false;
+    if (!p.total) {
+      sub.textContent = "Fetching tracks…";
+      count.textContent = "";
+      fill.classList.add("indet");
+    } else {
+      sub.textContent = p.current || "Starting downloads…";
+      count.textContent = `${p.done} / ${p.total}`;
+      fill.classList.remove("indet");
+      fill.style.width = Math.min(100, ((p.done + p.pct / 100) / p.total) * 100) + "%";
+    }
+    count.className = "job-count";
+  } else {
+    bar.hidden = true;
+    const bits = [];
+    if (p.total) bits.push(`${p.done} of ${p.total} track${p.total === 1 ? "" : "s"}`);
+    if (p.failed) bits.push(`${p.failed} failed`);
+    sub.textContent = bits.join(" · ");
+    count.textContent = j.status === "failed" ? "Failed" : "Done";
+    count.className = "job-count " + j.status;
   }
 }
 
@@ -288,7 +350,7 @@ async function refreshCrons() {
   $("crons-card").hidden = !list.length;
   $("crons-empty").hidden = !!list.length;
   $("crons").innerHTML = list.map((c) => `
-    <div class="cron ${c.enabled ? "" : "dim"} ${c.mine ? "mine" : ""}">
+    <div class="cron ${c.enabled ? "" : "dim"}">
       <div class="dot ${c.enabled ? "done" : "off"}"></div>
       <div class="sched">${esc(c.schedule)}</div>
       <div class="cmd" title="${esc(c.command)}">&lrm;${esc(c.command)}</div>

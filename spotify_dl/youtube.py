@@ -458,6 +458,8 @@ def download_songs(**kwargs):
     """
     for url in kwargs["songs"]["urls"]:
         log.debug("Downloading to %s", url["save_path"])
+    # machine-readable marker consumed by the web UI progress parser (web.py)
+    print(f"Total songs: {sum(len(url['songs']) for url in kwargs['songs']['urls'])}")
     reference_file = DOWNLOAD_LIST
     track_db = write_tracks(reference_file, kwargs["songs"])
     if not shutil._samefile(reference_file, kwargs["output_dir"] + "/" + reference_file):

@@ -27,6 +27,18 @@ app = FastAPI(title="spotify-dl")
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
+TOTAL_RE = re.compile(r"^Total songs: (\d+)")
+SC_SET_RE = re.compile(r"Saving (\d+) SoundCloud tracks")
+SC_TRACK_RE = re.compile(r"Saving SoundCloud track ")
+TRACK_START_RE = re.compile(r"^Initiating download for (.+)\.$")
+TRACK_DONE_RE = re.compile(
+    r"\[ExtractAudio\] Destination: "
+    r"|already exists, we do not overwrite"
+    r"|Recovered .* from orphan WebM"
+)
+TRACK_FAIL_RE = re.compile(r"^Failed to download ")
+PCT_RE = re.compile(r"\[download\]\s+([\d.]+)% of")
+
 jobs = {}
 job_ids = itertools.count(1)
 jobs_lock = threading.Lock()
@@ -80,6 +92,32 @@ def start_download(req: DownloadRequest):
     return {"id": job["id"]}
 
 
+def parse_progress(log):
+    """Derive structured progress from the CLI's log lines. With -mc the
+    workers' output interleaves, so counts are exact but `current` is just
+    the most recently started track."""
+    total = done = failed = 0
+    current = ""
+    pct = 0.0
+    for line in log:
+        if m := TOTAL_RE.match(line):
+            total += int(m.group(1))
+        elif m := SC_SET_RE.search(line):
+            total += int(m.group(1))
+        elif SC_TRACK_RE.search(line):
+            total += 1
+        elif m := TRACK_START_RE.match(line):
+            current = m.group(1)
+            pct = 0.0
+        elif TRACK_DONE_RE.search(line):
+            done += 1
+        elif TRACK_FAIL_RE.match(line):
+            failed += 1
+        elif m := PCT_RE.search(line):
+            pct = float(m.group(1))
+    return {"total": total, "done": done, "failed": failed, "current": current, "pct": pct}
+
+
 @app.get("/api/jobs")
 def list_jobs():
     return [
@@ -89,7 +127,7 @@ def list_jobs():
             "output": j["output"],
             "status": j["status"],
             "lines": len(j["log"]),
-            "last": j["log"][-1] if j["log"] else "",
+            "progress": parse_progress(j["log"]),
         }
         for j in sorted(jobs.values(), key=lambda j: -j["id"])
     ]
@@ -122,11 +160,12 @@ def list_crons():
         if len(parts) < 6:
             continue
         schedule, command = " ".join(parts[:5]), parts[5]
+        if "spotify-dl" not in command:
+            continue
         entries.append({
             "schedule": schedule,
             "command": command,
             "enabled": enabled,
-            "mine": "spotify-dl" in command,
         })
     return entries
 
