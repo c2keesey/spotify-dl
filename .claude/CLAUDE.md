@@ -53,7 +53,7 @@ uv run spotify_dl --repair --config sync_config.json --dry-run
 Key flags: `-mc N` parallel download processes, `-w` no-overwrite, `-l` accepts multiple URLs in one run.
 
 ### SoundCloud URLs
-`-l` also accepts SoundCloud track and set/playlist URLs (mixed freely with Spotify URLs). These bypass the Spotify-metadata + YouTube-search pipeline entirely — `soundcloud.py` hands the URL straight to yt-dlp, which supplies audio and metadata natively. Sets get a folder named after the set; single tracks land directly in the output dir. `-w` skips re-downloads via a `.sc_archive.txt` download-archive file in the save dir (the converted MP3's existence can't be detected by yt-dlp). `-mc` does not apply to SoundCloud downloads.
+`-l` also accepts SoundCloud track and set/playlist URLs (mixed freely with Spotify URLs). These bypass the Spotify-metadata + YouTube-search pipeline entirely — `soundcloud.py` hands the URL straight to yt-dlp, which supplies audio and metadata natively. Sets get a folder named after the set; single tracks land directly in the output dir. `-w` skips re-downloads via a `.sc_archive.txt` download-archive file in the save dir (the converted MP3's existence can't be detected by yt-dlp). `-mc N` downloads a set's tracks with N concurrent threads (ThreadPoolExecutor, not the multiprocessing machinery the Spotify path uses).
 
 ### Nightly Sync (currently DISABLED)
 `sync_cron.sh` is the 3am cron entry point, but the crontab line is commented out (`# DISABLED: 0 3 * * * ...`) — the feature isn't active yet. The script exports `/opt/homebrew/bin` onto PATH (cron's minimal PATH can't find deno otherwise), loads `.env`, and runs sync with `-mc 4`, logging to `logs/sync.log`. Re-enable by uncommenting in `crontab -e`.

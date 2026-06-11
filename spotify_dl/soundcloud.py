@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -16,30 +17,7 @@ def is_soundcloud_url(url):
     return urlparse(url).netloc.lower() in SOUNDCLOUD_HOSTS
 
 
-def download_soundcloud(url, output_dir, skip_mp3=False, no_overwrites=False, proxy=""):
-    """
-    Download a SoundCloud track or set/playlist using yt-dlp directly.
-    SoundCloud provides its own audio and metadata, so unlike Spotify URLs
-    there is no YouTube search step. Playlists are saved to a folder named
-    after the set; single tracks are saved directly into output_dir.
-    """
-    info_opts = {
-        "quiet": True,
-        "extract_flat": "in_playlist",
-        "proxy": proxy or None,
-    }
-    with yt_dlp.YoutubeDL(info_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-
-    if info.get("_type") == "playlist":
-        save_dir = Path(output_dir) / sanitize(info.get("title") or "soundcloud-playlist")
-        track_count = len(info.get("entries") or [])
-        log.info("Saving %d SoundCloud tracks to %s directory", track_count, save_dir.name)
-    else:
-        save_dir = Path(output_dir)
-        log.info("Saving SoundCloud track %s to %s", info.get("title"), save_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
-
+def _build_ydl_opts(save_dir, skip_mp3, no_overwrites, proxy):
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": str(save_dir / "%(uploader)s - %(title)s.%(ext)s"),
@@ -64,6 +42,51 @@ def download_soundcloud(url, output_dir, skip_mp3=False, no_overwrites=False, pr
                 "preferredquality": "192",
             },
         )
+    return ydl_opts
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+
+def download_soundcloud(url, output_dir, skip_mp3=False, no_overwrites=False, proxy="", multi_core=0):
+    """
+    Download a SoundCloud track or set/playlist using yt-dlp directly.
+    SoundCloud provides its own audio and metadata, so unlike Spotify URLs
+    there is no YouTube search step. Playlists are saved to a folder named
+    after the set; single tracks are saved directly into output_dir.
+    With multi_core > 1, a set's tracks are downloaded concurrently by a
+    thread pool (the work is network-bound, so threads suffice).
+    """
+    info_opts = {
+        "quiet": True,
+        "extract_flat": "in_playlist",
+        "proxy": proxy or None,
+    }
+    with yt_dlp.YoutubeDL(info_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    is_playlist = info.get("_type") == "playlist"
+    if is_playlist:
+        save_dir = Path(output_dir) / sanitize(info.get("title") or "soundcloud-playlist")
+        track_count = len(info.get("entries") or [])
+        log.info("Saving %d SoundCloud tracks to %s directory", track_count, save_dir.name)
+    else:
+        save_dir = Path(output_dir)
+        log.info("Saving SoundCloud track %s to %s", info.get("title"), save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    ydl_opts = _build_ydl_opts(save_dir, skip_mp3, no_overwrites, proxy)
+
+    if is_playlist and multi_core > 1:
+        track_urls = [e["url"] for e in info.get("entries") or [] if e.get("url")]
+        log.info("Downloading with %d parallel threads", multi_core)
+
+        def download_one(track_url):
+            # each thread gets its own YoutubeDL instance; the shared archive
+            # file is safe because each instance re-reads it at init and
+            # appends one line per finished track
+            with yt_dlp.YoutubeDL(_build_ydl_opts(save_dir, skip_mp3, no_overwrites, proxy)) as ydl:
+                ydl.download([track_url])
+
+        with ThreadPoolExecutor(max_workers=multi_core) as pool:
+            list(pool.map(download_one, track_urls))
+    else:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])

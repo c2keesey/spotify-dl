@@ -237,6 +237,7 @@ def spotify_dl():
             skip_mp3=args.skip_mp3,
             no_overwrites=args.no_overwrites,
             proxy=args.proxy,
+            multi_core=args.multi_core,
         )
     if not spotify_urls:
         log.info("Download completed in %.2f seconds.", time.time() - start_time)
