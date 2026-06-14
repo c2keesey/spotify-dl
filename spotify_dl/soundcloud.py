@@ -45,12 +45,14 @@ def _build_ydl_opts(save_dir, skip_mp3, no_overwrites, proxy):
     return ydl_opts
 
 
-def download_soundcloud(url, output_dir, skip_mp3=False, no_overwrites=False, proxy="", multi_core=0):
+def download_soundcloud(url, output_dir, skip_mp3=False, no_overwrites=False, proxy="", multi_core=0, name=None):
     """
     Download a SoundCloud track or set/playlist using yt-dlp directly.
     SoundCloud provides its own audio and metadata, so unlike Spotify URLs
     there is no YouTube search step. Playlists are saved to a folder named
     after the set; single tracks are saved directly into output_dir.
+    A custom folder name can be supplied via ``name`` (overrides the set
+    name and, for single tracks, places the file in a folder of that name).
     With multi_core > 1, a set's tracks are downloaded concurrently by a
     thread pool (the work is network-bound, so threads suffice).
     """
@@ -63,7 +65,11 @@ def download_soundcloud(url, output_dir, skip_mp3=False, no_overwrites=False, pr
         info = ydl.extract_info(url, download=False)
 
     is_playlist = info.get("_type") == "playlist"
-    if is_playlist:
+    if name:
+        save_dir = Path(output_dir) / sanitize(name)
+        track_count = len(info.get("entries") or []) if is_playlist else 1
+        log.info("Saving %d SoundCloud track(s) to %s directory", track_count, save_dir.name)
+    elif is_playlist:
         save_dir = Path(output_dir) / sanitize(info.get("title") or "soundcloud-playlist")
         track_count = len(info.get("entries") or [])
         log.info("Saving %d SoundCloud tracks to %s directory", track_count, save_dir.name)

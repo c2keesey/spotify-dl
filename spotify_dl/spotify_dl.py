@@ -50,6 +50,15 @@ def spotify_dl():
         default=".",
     )
     parser.add_argument(
+        "-n",
+        "--name",
+        type=str,
+        action="store",
+        help="Custom name for the download folder (overrides the auto-derived playlist/album/track name). Only applies when a single URL is given.",
+        required=False,
+        default=None,
+    )
+    parser.add_argument(
         "-d",
         "--download",
         action="store_true",
@@ -230,6 +239,14 @@ def spotify_dl():
     soundcloud_urls = [url for url in args.url if is_soundcloud_url(url)]
     spotify_urls = [url for url in args.url if not is_soundcloud_url(url)]
 
+    # A custom folder name only makes sense for a single URL across both sources.
+    single_url = len(args.url) == 1
+    if args.name and not single_url:
+        log.warning(
+            "--name ignored: a custom folder name only applies when a single URL is given (%d provided).",
+            len(args.url),
+        )
+
     for url in soundcloud_urls:
         download_soundcloud(
             url,
@@ -238,6 +255,7 @@ def spotify_dl():
             no_overwrites=args.no_overwrites,
             proxy=args.proxy,
             multi_core=args.multi_core,
+            name=args.name if single_url else None,
         )
     if not spotify_urls:
         log.info("Download completed in %.2f seconds.", time.time() - start_time)
@@ -262,7 +280,10 @@ def spotify_dl():
     for url in valid_urls:
         url_dict = {}
         item_type, item_id = parse_spotify_url(url)
-        directory_name = get_item_name(sp, item_type, item_id)
+        if args.name and single_url:
+            directory_name = args.name
+        else:
+            directory_name = get_item_name(sp, item_type, item_id)
         url_dict["save_path"] = Path(
             PurePath.joinpath(Path(args.output), Path(directory_name))
         )

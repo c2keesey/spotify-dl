@@ -46,6 +46,9 @@ export SPOTIPY_CLIENT_SECRET='your-client-secret'
 # Download a playlist
 spotify_dl -l https://open.spotify.com/playlist/xxxxx -o ./music
 
+# Custom folder name (instead of the auto-derived playlist/album/track name)
+spotify_dl -l playlist_url -o ./music -n "My Mix"
+
 # Parallel download (4 cores)
 spotify_dl -mc 4 -l playlist_url
 
