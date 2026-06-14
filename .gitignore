@@ -47,3 +47,8 @@ old_downloads/
 
 # Web UI one-off downloads
 downloads/
+
+# Stray tool logs / beads internal db
+excalidraw.log
+.beads/backup/
+.beads/embeddeddolt/

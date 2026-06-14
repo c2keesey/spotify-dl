@@ -1,0 +1,306 @@
+"""Tests for the web UI layer (spotify_dl/web.py).
+
+No network, no real downloads: subprocess, crontab, and the Spotify client are
+all mocked. Run with `pytest tests/test_web.py`.
+"""
+
+import pytest
+from fastapi.testclient import TestClient
+from spotipy.exceptions import SpotifyException
+
+from spotify_dl import web
+
+
+@pytest.fixture
+def client():
+    web.jobs.clear()
+    return TestClient(web.app)
+
+
+# ---- error summarization ----
+
+def test_summarize_editorial_playlist():
+    log = [
+        "HTTP Error for GET to https://api.spotify.com/v1/playlists/37i9dQZF1DXcBWIGoYBM5M",
+        "404 due to Resource not found",
+    ]
+    assert "editorial" in web.summarize_error(log).lower()
+
+
+def test_summarize_generic_404():
+    msg = web.summarize_error(["http status: 404", "Resource not found"])
+    assert "private" in msg.lower() or "deleted" in msg.lower()
+
+
+def test_summarize_youtube_block():
+    assert "yt-dlp" in web.summarize_error(["Signature solving failed"]).lower()
+
+
+def test_summarize_fallback_to_last_error_line():
+    log = ["Starting", "Traceback (most recent call last):", "ValueError: something broke"]
+    assert web.summarize_error(log) == "ValueError: something broke"
+
+
+def test_summarize_none_when_clean():
+    assert web.summarize_error(["all good", "done"]) is None
+
+
+# ---- preview ----
+
+class FakeSpotify:
+    def track(self, _id):
+        return {"name": "Blinding Lights", "artists": [{"name": "The Weeknd"}],
+                "album": {"images": [{"url": "http://img/track.jpg"}]}}
+
+    def album(self, _id):
+        return {"name": "After Hours", "total_tracks": 14, "images": [{"url": "http://img/album.jpg"}]}
+
+    def playlist(self, _id, fields=None):
+        return {"name": "My Mix", "images": [{"url": "http://img/pl.jpg"}], "tracks": {"total": 42}}
+
+
+def test_preview_track(client, monkeypatch):
+    monkeypatch.setattr(web, "spotify_client", lambda: FakeSpotify())
+    r = client.get("/api/preview", params={"url": "https://open.spotify.com/track/abc123"})
+    d = r.json()
+    assert d["kind"] == "track" and d["count"] == 1
+    assert d["name"] == "The Weeknd — Blinding Lights"
+    assert d["error"] is None
+
+
+def test_preview_playlist(client, monkeypatch):
+    monkeypatch.setattr(web, "spotify_client", lambda: FakeSpotify())
+    d = client.get("/api/preview", params={"url": "https://open.spotify.com/playlist/xyz"}).json()
+    assert d["kind"] == "playlist" and d["count"] == 42 and d["name"] == "My Mix"
+
+
+def test_preview_editorial_404(client, monkeypatch):
+    fake = FakeSpotify()
+    fake.playlist = lambda _id, fields=None: (_ for _ in ()).throw(SpotifyException(404, -1, "x"))
+    monkeypatch.setattr(web, "spotify_client", lambda: fake)
+    d = client.get("/api/preview", params={"url": "https://open.spotify.com/playlist/37i9dQZ"}).json()
+    assert "editorial" in d["error"].lower()
+
+
+def test_preview_missing_credentials(client, monkeypatch):
+    def raise_creds():
+        raise RuntimeError("missing-credentials")
+    monkeypatch.setattr(web, "spotify_client", raise_creds)
+    d = client.get("/api/preview", params={"url": "https://open.spotify.com/track/abc"}).json()
+    assert ".env" in d["error"]
+
+
+def test_preview_soundcloud(client):
+    d = client.get("/api/preview", params={"url": "https://soundcloud.com/artist/track"}).json()
+    assert d["kind"] == "soundcloud" and d["error"] is None
+
+
+def test_preview_bad_link(client):
+    d = client.get("/api/preview", params={"url": "https://example.com/foo"}).json()
+    assert d["kind"] is None and d["error"]
+
+
+# ---- download lifecycle (subprocess mocked) ----
+
+class FakeProc:
+    def __init__(self, lines, returncode=0):
+        self.stdout = iter(lines)
+        self.returncode = returncode
+
+    def wait(self):
+        return self.returncode
+
+
+def test_download_success(client, monkeypatch):
+    lines = ["Total songs: 1\n", "Initiating download for The Weeknd - Blinding Lights.\n",
+             "[ExtractAudio] Destination: x.mp3\n"]
+    monkeypatch.setattr(web.subprocess, "Popen", lambda *a, **k: FakeProc(lines, 0))
+    r = client.post("/api/download", json={"urls": ["https://open.spotify.com/track/abc"], "output": ""})
+    # run_job runs in a daemon thread; poll the in-memory job until it settles
+    job = web.jobs[r.json()["id"]]
+    import time
+    for _ in range(200):
+        if job["status"] != "running":
+            break
+        time.sleep(0.01)
+    assert job["status"] == "done"
+    listed = client.get("/api/jobs").json()[0]
+    assert listed["progress"]["total"] == 1 and listed["progress"]["done"] == 1
+    assert listed["progress"]["failed"] == 0
+    assert listed["error"] is None
+
+
+def test_download_failure_has_error(client, monkeypatch):
+    lines = ["Starting", "404 due to Resource not found", "playlists/37i9dQ"]
+    monkeypatch.setattr(web.subprocess, "Popen", lambda *a, **k: FakeProc(lines, 1))
+    r = client.post("/api/download", json={"urls": ["https://open.spotify.com/playlist/37i9dQ"]})
+    job = web.jobs[r.json()["id"]]
+    import time
+    for _ in range(200):
+        if job["status"] != "running":
+            break
+        time.sleep(0.01)
+    assert job["status"] == "failed"
+    assert "editorial" in client.get("/api/jobs").json()[0]["error"].lower()
+
+
+def test_download_rejects_empty(client):
+    assert client.post("/api/download", json={"urls": [" ", ""]}).status_code == 400
+
+
+# ---- failed-track surfacing ----
+
+def test_progress_names_failed_track():
+    log = [
+        "Total songs: 3",
+        "[ExtractAudio] Destination: a.mp3",
+        "Failed to download The Beatles - Yesterday, make sure yt_dlp is up to date",
+        "No search results found for Obscure Artist - B-side, skipping.   youtube.py:322",
+    ]
+    p = web.parse_progress(log)
+    assert p["total"] == 3 and p["done"] == 1
+    assert p["failed"] == 2                       # 3 total - 1 done
+    assert "The Beatles - Yesterday" in p["failed_tracks"]
+    assert "Obscure Artist - B-side" in p["failed_tracks"]
+
+
+def test_progress_dedupes_and_counts_unnamed():
+    log = [
+        "Total songs: 5",
+        "[ExtractAudio] Destination: a.mp3",
+        "[ExtractAudio] Destination: b.mp3",
+        "Failed to download Same Song, make sure yt_dlp is up to date",
+        "Failed to download Same Song, make sure yt_dlp is up to date",
+    ]
+    p = web.parse_progress(log)
+    assert p["done"] == 2
+    assert p["failed"] == 3                       # 5 - 2; only one named (deduped)
+    assert p["failed_tracks"] == ["Same Song"]
+
+
+# ---- browse & library ----
+
+def test_browse_lists_dirs(client, tmp_path):
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "beta").mkdir()
+    (tmp_path / ".hidden").mkdir()
+    d = client.get("/api/browse", params={"path": str(tmp_path)}).json()
+    assert "alpha" in d["dirs"] and "beta" in d["dirs"] and ".hidden" not in d["dirs"]
+
+
+def test_library_counts_tracks(client, tmp_path):
+    mix = tmp_path / "Road Trip"
+    mix.mkdir()
+    (mix / "song1.mp3").write_text("x")
+    (mix / "song2.mp3").write_text("x")
+    (tmp_path / "loose.mp3").write_text("x")
+    d = client.get("/api/library", params={"path": str(tmp_path)}).json()
+    folder = next(f for f in d["folders"] if f["name"] == "Road Trip")
+    assert folder["tracks"] == 2 and d["loose"] == 1
+
+
+def test_reveal_missing_path(client):
+    assert client.post("/api/reveal", json={"path": "/no/such/place/xyz"}).status_code == 404
+
+
+class FakeRun:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+def test_pick_folder_returns_chosen_path(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(web.sys, "platform", "darwin")
+    monkeypatch.setattr(web.subprocess, "run", lambda *a, **k: FakeRun(0, str(tmp_path) + "/\n"))
+    d = client.post("/api/pick-folder", json={"start": str(tmp_path)}).json()
+    assert d["cancelled"] is False and d["path"] == str(tmp_path)
+
+
+def test_pick_folder_cancelled(client, monkeypatch):
+    monkeypatch.setattr(web.sys, "platform", "darwin")
+    monkeypatch.setattr(web.subprocess, "run", lambda *a, **k: FakeRun(1, "", "execution error: User canceled. (-128)"))
+    assert client.post("/api/pick-folder", json={}).json() == {"cancelled": True}
+
+
+def test_pick_folder_non_mac(client, monkeypatch):
+    monkeypatch.setattr(web.sys, "platform", "linux")
+    assert client.post("/api/pick-folder", json={}).status_code == 501
+
+
+# ---- crons (crontab mocked) ----
+
+def test_cron_create_list_toggle_delete(client, monkeypatch):
+    store = {"lines": []}
+    monkeypatch.setattr(web, "_read_crontab", lambda: list(store["lines"]))
+    monkeypatch.setattr(web, "_write_crontab", lambda lines: store.update(lines=list(lines)))
+
+    cid = client.post("/api/crons", json={
+        "urls": ["https://open.spotify.com/track/abc"], "output": "", "freq": "daily", "hour": 3, "minute": 0,
+    }).json()["id"]
+
+    crons = client.get("/api/crons").json()
+    assert len(crons) == 1 and crons[0]["managed"] and crons[0]["enabled"]
+    assert "Daily" in crons[0]["friendly"]
+
+    assert client.post(f"/api/crons/{cid}/toggle").json()["enabled"] is False
+    assert client.get("/api/crons").json()[0]["enabled"] is False
+
+    assert client.delete(f"/api/crons/{cid}").json()["ok"] is True
+    assert client.get("/api/crons").json() == []
+
+
+def test_cron_list_includes_editable_fields(client, monkeypatch):
+    store = {"lines": []}
+    monkeypatch.setattr(web, "_read_crontab", lambda: list(store["lines"]))
+    monkeypatch.setattr(web, "_write_crontab", lambda lines: store.update(lines=list(lines)))
+    client.post("/api/crons", json={
+        "urls": ["https://open.spotify.com/playlist/abc"], "output": "",
+        "freq": "weekly", "hour": 9, "minute": 30, "dow": 5,
+    })
+    fields = client.get("/api/crons").json()[0]["fields"]
+    assert fields == {"freq": "weekly", "hour": 9, "minute": 30, "dow": 5}
+
+
+def test_cron_update_in_place(client, monkeypatch):
+    store = {"lines": []}
+    monkeypatch.setattr(web, "_read_crontab", lambda: list(store["lines"]))
+    monkeypatch.setattr(web, "_write_crontab", lambda lines: store.update(lines=list(lines)))
+
+    cid = client.post("/api/crons", json={
+        "urls": ["https://open.spotify.com/playlist/abc"], "output": "",
+        "freq": "daily", "hour": 3, "minute": 0,
+    }).json()["id"]
+
+    new_id = client.put(f"/api/crons/{cid}", json={
+        "urls": ["https://open.spotify.com/playlist/abc"], "output": "",
+        "freq": "daily", "hour": 8, "minute": 15,
+    }).json()["id"]
+
+    crons = client.get("/api/crons").json()
+    assert len(crons) == 1                       # replaced in place, not duplicated
+    assert crons[0]["id"] == new_id
+    assert "8:15 AM" in crons[0]["friendly"]
+
+
+def test_cron_update_preserves_disabled_state(client, monkeypatch):
+    store = {"lines": []}
+    monkeypatch.setattr(web, "_read_crontab", lambda: list(store["lines"]))
+    monkeypatch.setattr(web, "_write_crontab", lambda lines: store.update(lines=list(lines)))
+    cid = client.post("/api/crons", json={
+        "urls": ["https://open.spotify.com/playlist/abc"], "output": "", "freq": "daily", "hour": 3, "minute": 0,
+    }).json()["id"]
+    client.post(f"/api/crons/{cid}/toggle")      # disable it
+    cid2 = web._cron_id(*web._parse_cron_line(store["lines"][0])[1:])
+    new_id = client.put(f"/api/crons/{cid2}", json={
+        "urls": ["https://open.spotify.com/playlist/abc"], "output": "", "freq": "daily", "hour": 6, "minute": 0,
+    }).json()["id"]
+    assert client.get("/api/crons").json()[0]["enabled"] is False
+    assert client.get("/api/crons").json()[0]["id"] == new_id
+
+
+def test_cron_update_missing(client, monkeypatch):
+    monkeypatch.setattr(web, "_read_crontab", lambda: [])
+    monkeypatch.setattr(web, "_write_crontab", lambda lines: None)
+    r = client.put("/api/crons/deadbeef", json={
+        "urls": ["https://open.spotify.com/track/x"], "output": "", "freq": "daily", "hour": 3, "minute": 0,
+    })
+    assert r.status_code == 404
