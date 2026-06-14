@@ -614,7 +614,10 @@ def index():
 
 
 def main():
-    threading.Timer(0.8, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}")).start()
+    # The launcher app opens the browser itself; set SPOTIFY_DL_NO_BROWSER=1
+    # to suppress this so we don't end up with two tabs.
+    if not os.environ.get("SPOTIFY_DL_NO_BROWSER"):
+        threading.Timer(0.8, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}")).start()
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
 
 

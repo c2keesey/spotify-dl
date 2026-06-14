@@ -1,0 +1,42 @@
+#!/bin/bash
+# Launcher for the spotify-dl web UI. Double-clicking the app (or its Dock icon)
+# runs this: it starts the local server if it isn't already running, then opens
+# the UI in the default browser. No Terminal window appears.
+#
+# The app bundle lives inside the project folder, so the repo is three levels up
+# from this script: .app/Contents/MacOS/launch -> repo.
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+PORT=8765
+URL="http://127.0.0.1:$PORT/"
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$HERE/../../.." && pwd)"
+
+fail() {
+  osascript -e "display dialog \"$1\" with title \"spotify-dl\" buttons {\"OK\"} default button \"OK\" with icon caution" >/dev/null 2>&1
+  exit 1
+}
+
+# Already running? Just open it.
+if curl -s -o /dev/null --max-time 1 "$URL"; then
+  open "$URL"
+  exit 0
+fi
+
+command -v uv >/dev/null 2>&1 || fail "First-time setup needed. Open the spotify-dl project folder and double-click install.command, then try again."
+[ -f "$REPO/.env" ] || fail "Missing Spotify credentials (.env). Double-click install.command in the project folder to set them up."
+
+cd "$REPO" || fail "Could not find the spotify-dl project folder."
+mkdir -p logs
+SPOTIFY_DL_NO_BROWSER=1 nohup uv run spotify-dl-ui >> logs/web-ui.log 2>&1 &
+
+# Wait for the server to answer, then open the browser once.
+for _ in $(seq 1 60); do
+  if curl -s -o /dev/null --max-time 1 "$URL"; then
+    open "$URL"
+    exit 0
+  fi
+  sleep 0.5
+done
+fail "spotify-dl didn't start within 30s. Check logs/web-ui.log in the project folder."
