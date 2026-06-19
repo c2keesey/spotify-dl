@@ -7,6 +7,7 @@ web layer stays a thin shell over the exact same code path as the terminal.
 import functools
 import hashlib
 import itertools
+import json
 import os
 import re
 import shlex
@@ -24,6 +25,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
+
+from spotify_dl.spotify import get_item_name
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -79,6 +82,10 @@ def run_job(job):
             job["log"].append(ANSI_RE.sub("", line.rstrip("\n")))
         proc.wait()
         job["status"] = "done" if proc.returncode == 0 else "failed"
+        try:
+            record_sources(job)
+        except Exception:  # noqa: BLE001 - source mapping is best-effort
+            pass
     except Exception as e:  # noqa: BLE001 - surface anything to the UI
         job["log"].append(f"error: {e}")
         job["status"] = "failed"
@@ -111,7 +118,8 @@ def parse_progress(log):
     total = done = 0
     current = ""
     pct = 0.0
-    failed_tracks = []
+    failed_tracks = []      # download failures (may be transient — worth a retry)
+    unmatched_tracks = []   # no YouTube result (deterministic — a retry won't help)
     for line in log:
         if m := TOTAL_RE.match(line):
             total += int(m.group(1))
@@ -127,18 +135,25 @@ def parse_progress(log):
         elif m := TRACK_FAIL_RE.match(line):
             failed_tracks.append(m.group(1).strip())
         elif m := NO_MATCH_RE.search(line):
-            failed_tracks.append(m.group(1).strip())
+            unmatched_tracks.append(m.group(1).strip())
         elif m := PCT_RE.search(line):
             pct = float(m.group(1))
+
+    def _dedup(names):
+        seen, out = set(), []
+        for n in names:
+            if n and n not in seen:
+                seen.add(n)
+                out.append(n)
+        return out
+
     # tracks that didn't make it: everything counted but not finished
-    missing = max(0, total - done) if total else len(failed_tracks)
-    seen, named = set(), []
-    for name in failed_tracks:
-        if name and name not in seen:
-            seen.add(name)
-            named.append(name)
+    missing = max(0, total - done) if total else len(failed_tracks) + len(unmatched_tracks)
+    unmatched = _dedup(unmatched_tracks)
+    unmatched_set = set(unmatched)
+    failed = [n for n in _dedup(failed_tracks) if n not in unmatched_set]
     return {"total": total, "done": done, "failed": missing, "current": current,
-            "pct": pct, "failed_tracks": named}
+            "pct": pct, "failed_tracks": failed, "unmatched": unmatched}
 
 
 def summarize_error(log):
@@ -159,6 +174,30 @@ def summarize_error(log):
         if s and ("Error" in s or "Exception" in s) and not s.startswith("Traceback"):
             return s[:200]
     return None
+
+
+@app.post("/api/jobs/{job_id}/retry")
+def retry_job(job_id: int):
+    """Re-run a finished job's links. Because downloads use -w (no-overwrite),
+    tracks already on disk are skipped, so this only re-attempts the ones that
+    didn't make it the first time."""
+    with jobs_lock:
+        orig = jobs.get(job_id)
+        if not orig:
+            raise HTTPException(404, "no such job")
+        if orig["status"] == "running":
+            raise HTTPException(409, "job is still running")
+        job = {
+            "id": next(job_ids),
+            "urls": orig["urls"],
+            "output": orig["output"],
+            "status": "running",
+            "log": [],
+            "meta": orig.get("meta", []),
+        }
+        jobs[job["id"]] = job
+    threading.Thread(target=run_job, args=(job,), daemon=True).start()
+    return {"id": job["id"]}
 
 
 @app.get("/api/jobs")
@@ -256,6 +295,49 @@ def preview(url: str = ""):
     return resolve_link(url)
 
 
+# ---- source mapping (folder -> link, for library sync) ----
+
+SOURCES_FILE = ".spotify_dl_sources.json"
+
+
+def folder_for_url(url):
+    """The on-disk folder name a Spotify link downloads into — computed with the
+    same naming the downloader uses, so it matches exactly. None for SoundCloud
+    or anything without its own folder."""
+    m = SPOTIFY_URL_RE.search(url)
+    if not m:
+        return None
+    kind, item_id = m.group(1), m.group(2)
+    try:
+        return get_item_name(spotify_client(), kind, item_id)
+    except Exception:  # noqa: BLE001 - best-effort; unknown folder just isn't syncable
+        return None
+
+
+def _load_sources(output):
+    try:
+        return json.loads((Path(output) / SOURCES_FILE).read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def record_sources(job):
+    """Remember which link produced each folder so the library can re-sync it."""
+    output = job["output"]
+    mapping = _load_sources(output)
+    changed = False
+    for url in job["urls"]:
+        folder = folder_for_url(url)
+        if folder and (Path(output) / folder).is_dir() and mapping.get(folder) != url:
+            mapping[folder] = url
+            changed = True
+    if changed:
+        try:
+            (Path(output) / SOURCES_FILE).write_text(json.dumps(mapping, indent=2))
+        except OSError:
+            pass
+
+
 # ---- output paths & external drives ----
 
 def detect_external_drives():
@@ -341,12 +423,14 @@ def library(path: str = ""):
         p = DEFAULT_OUTPUT
     folders, loose = [], 0
     if p.is_dir():
+        sources = _load_sources(p)
         try:
             for child in sorted(p.iterdir(), key=lambda c: c.name.lower()):
                 try:
                     if child.is_dir() and not child.name.startswith("."):
                         tracks = sum(1 for _ in child.rglob("*.mp3"))
-                        folders.append({"name": child.name, "path": str(child), "tracks": tracks})
+                        folders.append({"name": child.name, "path": str(child),
+                                        "tracks": tracks, "url": sources.get(child.name)})
                     elif child.suffix.lower() == ".mp3":
                         loose += 1
                 except OSError:
