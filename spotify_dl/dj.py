@@ -6,6 +6,7 @@ No rekordbox dependency here — everything is unit-testable in isolation.
 import json
 import re
 import subprocess
+import threading
 from pathlib import Path
 
 # rekordbox key name (both sharp and flat spellings) -> Camelot code.
@@ -80,6 +81,11 @@ def rate_transition(a, b):
 ENERGY_CACHE = Path.home() / ".spotify_dl_energy.json"
 LOUDNESS_RE = re.compile(r"I:\s*(-?[\d.]+)\s*LUFS")
 
+# Serializes the read-modify-write of the energy cache so concurrent
+# /api/dj/energy requests (FastAPI threadpool) don't clobber each other's
+# entries. Never held across the ffmpeg subprocess (can take 120s).
+_ENERGY_LOCK = threading.Lock()
+
 
 def parse_loudness(ffmpeg_stderr):
     """Integrated LUFS from ffmpeg's ebur128 summary, or None."""
@@ -89,9 +95,10 @@ def parse_loudness(ffmpeg_stderr):
 
 def _load_energy_cache(cache_file):
     try:
-        return json.loads(Path(cache_file).read_text())
+        data = json.loads(Path(cache_file).read_text())
     except (OSError, ValueError):
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def get_energy(path, cache_file=None):
@@ -103,9 +110,10 @@ def get_energy(path, cache_file=None):
         key = f"{p}:{p.stat().st_mtime_ns}"
     except OSError:
         return None
-    cache = _load_energy_cache(cache_file)
-    if key in cache:
-        return cache[key]
+    with _ENERGY_LOCK:
+        cache = _load_energy_cache(cache_file)
+        if key in cache:
+            return cache[key]
     try:
         done = subprocess.run(
             ["ffmpeg", "-hide_banner", "-nostats", "-i", str(p),
@@ -116,9 +124,11 @@ def get_energy(path, cache_file=None):
         return None
     lufs = parse_loudness(done.stderr)
     if lufs is not None:
-        cache[key] = lufs
-        try:
-            Path(cache_file).write_text(json.dumps(cache))
-        except OSError:
-            pass
+        with _ENERGY_LOCK:
+            cache = _load_energy_cache(cache_file)   # re-read: another thread may have written
+            cache[key] = lufs
+            try:
+                Path(cache_file).write_text(json.dumps(cache))
+            except OSError:
+                pass
     return lufs

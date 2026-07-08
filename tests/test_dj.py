@@ -1,5 +1,7 @@
 """Tests for pure DJ math: Camelot mapping, compatibility, energy parsing."""
 
+import threading
+
 import pytest
 
 from spotify_dl import dj
@@ -125,3 +127,52 @@ def test_get_energy_runs_ffmpeg_and_caches(tmp_path, monkeypatch):
 
 def test_get_energy_missing_file(tmp_path):
     assert dj.get_energy(str(tmp_path / "gone.mp3"), cache_file=tmp_path / "c.json") is None
+
+
+def test_energy_cache_concurrent_writes_preserved(tmp_path, monkeypatch):
+    """Two threads computing energy for different files must not clobber each
+    other's cache entry (non-atomic read-modify-write race)."""
+    cache = tmp_path / "energy.json"
+    songs = []
+    for name in ("a.mp3", "b.mp3"):
+        s = tmp_path / name
+        s.write_bytes(b"x")
+        songs.append(s)
+
+    class FakeDone:
+        stderr = FFMPEG_EBUR128_TAIL
+
+    start = threading.Barrier(2)
+
+    def fake_run(cmd, **kw):
+        start.wait()          # maximize overlap: both threads run at once
+        return FakeDone()
+
+    monkeypatch.setattr(dj.subprocess, "run", fake_run)
+
+    def worker(song):
+        dj.get_energy(str(song), cache_file=cache)
+
+    threads = [threading.Thread(target=worker, args=(s,)) for s in songs]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    saved = dj._load_energy_cache(cache)
+    keys = {k.split(":")[0] for k in saved}
+    assert keys == {str(songs[0]), str(songs[1])}   # both entries survived
+
+
+def test_load_energy_cache_non_dict(tmp_path, monkeypatch):
+    """A cache file that isn't a JSON object must not break get_energy."""
+    cache = tmp_path / "energy.json"
+    cache.write_text("[1,2]")
+    song = tmp_path / "a.mp3"
+    song.write_bytes(b"x")
+
+    class FakeDone:
+        stderr = FFMPEG_EBUR128_TAIL
+
+    monkeypatch.setattr(dj.subprocess, "run", lambda cmd, **kw: FakeDone())
+    assert dj.get_energy(str(song), cache_file=cache) == -9.8
