@@ -162,3 +162,54 @@ def backup_master_db():
     dest = MASTER_DB.with_name(f"master.backup.spotify-dl.{stamp}.db")
     shutil.copy2(MASTER_DB, dest)
     return dest
+
+
+class RekordboxRunning(RuntimeError):
+    """Raised when a write is attempted while rekordbox holds the DB lock."""
+
+
+def _dedup_within_batch(paths):
+    """Second dedup pass, within one import batch: spotify-dl's sync copies
+    the same song into multiple playlist folders, so a single batch can
+    contain N copies of a song that are all "new" vs the collection. Drop
+    later files that match an earlier-accepted file in this batch by the
+    same rules used against the collection. Returns (accepted, dupes) where
+    accepted is [(path, artist, title, duration), ...]."""
+    accepted = []
+    dupes = []
+    for p in paths:
+        artist, title, dur = file_tags(p)
+        hit = next(
+            (a for a in accepted
+             if _artists_match(artist, a[1]) and norm_title(title) == norm_title(a[2])
+             and _durations_similar(dur, a[3])),
+            None,
+        )
+        if hit:
+            dupes.append({"path": p,
+                          "reason": f"duplicate of “{hit[0]}” within this import"})
+        else:
+            accepted.append((p, artist, title, dur))
+    return accepted, dupes
+
+
+def import_files(paths):
+    """Additive-only import: dedup FIRST, then add only genuinely new tracks.
+    Never modifies existing rows. Returns {imported, skipped_duplicates}."""
+    if is_rekordbox_running():
+        raise RekordboxRunning("close rekordbox first")
+    existing = load_tracks()
+    candidates, dupes = find_duplicates(paths, existing)
+    accepted, batch_dupes = _dedup_within_batch(candidates)
+    dupes += batch_dupes
+    new = [p for p, _artist, _title, _dur in accepted]
+    if new:
+        backup_master_db()
+        db = open_db()
+        try:
+            for p, _artist, title, _dur in accepted:
+                db.add_content(p, Title=title)
+            db.commit()
+        finally:
+            db.close()
+    return {"imported": new, "skipped_duplicates": dupes}

@@ -146,3 +146,67 @@ def test_live_read_collection():
     t = analyzed[0]
     assert t["bpm"] and t["camelot"] and t["file_path"]
     assert not any("/Sampler/" in t["file_path"] for t in tracks)
+
+
+# ---- guarded import (db layer stubbed; never touches the real DB) ----
+
+class FakeDB:
+    def __init__(self):
+        self.added = []
+        self.committed = False
+        self.closed = False
+
+    def add_content(self, path, **kw):
+        self.added.append((str(path), kw))
+
+    def commit(self):
+        self.committed = True
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def stub_writes(monkeypatch):
+    fake = FakeDB()
+    backups = []
+    monkeypatch.setattr(rb, "is_rekordbox_running", lambda: False)
+    monkeypatch.setattr(rb, "open_db", lambda: fake)
+    monkeypatch.setattr(rb, "load_tracks", lambda: [EX()])
+    monkeypatch.setattr(rb, "backup_master_db", lambda: backups.append(1) or Path("/tmp/b.db"))
+    monkeypatch.setattr(rb, "file_tags", lambda p: ("New Artist", "New Song", 180.0))
+    return fake, backups
+
+
+def test_import_refuses_while_rekordbox_running(monkeypatch):
+    monkeypatch.setattr(rb, "is_rekordbox_running", lambda: True)
+    with pytest.raises(rb.RekordboxRunning):
+        rb.import_files(["/d/x.mp3"])
+
+
+def test_import_dedups_then_adds(stub_writes, monkeypatch):
+    fake, backups = stub_writes
+    result = rb.import_files(["/lib/a.mp3", "/d/new.mp3"])
+    assert result["imported"] == ["/d/new.mp3"]
+    assert len(result["skipped_duplicates"]) == 1
+    assert backups == [1]                      # backed up before writing
+    assert fake.added[0][0] == "/d/new.mp3"
+    assert fake.added[0][1].get("Title") == "New Song"
+    assert fake.committed and fake.closed
+
+
+def test_import_all_duplicates_writes_nothing(stub_writes, monkeypatch):
+    fake, backups = stub_writes
+    result = rb.import_files(["/lib/a.mp3"])
+    assert result["imported"] == []
+    assert backups == []                       # no write -> no backup needed
+    assert fake.added == []
+
+
+def test_import_dedups_within_batch(stub_writes):
+    fake, backups = stub_writes
+    # stub file_tags returns the same song for every path -> second is an intra-batch dupe
+    result = rb.import_files(["/d/copy1.mp3", "/d/copy2.mp3"])
+    assert result["imported"] == ["/d/copy1.mp3"]
+    assert len(result["skipped_duplicates"]) == 1
+    assert [a[0] for a in fake.added] == ["/d/copy1.mp3"]
