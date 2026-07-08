@@ -10,6 +10,18 @@ from spotipy.exceptions import SpotifyException
 
 from spotify_dl import web
 
+# Captured before any test can stub it: auto_import writes to the real
+# rekordbox DB when rekordbox is closed, so tests that need the REAL function
+# (not the autouse stub below) reach for this handle.
+REAL_AUTO_IMPORT = web.auto_import
+
+
+@pytest.fixture(autouse=True)
+def _no_real_auto_import(monkeypatch):
+    """auto_import writes to the real rekordbox DB when rekordbox is closed —
+    never let a test reach it. Tests that need it use REAL_AUTO_IMPORT."""
+    monkeypatch.setattr(web, "auto_import", lambda output: None)
+
 
 @pytest.fixture
 def client():
@@ -439,5 +451,28 @@ def test_auto_import_skips_when_rekordbox_open(monkeypatch, tmp_path):
     monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: True)
     called = []
     monkeypatch.setattr(web.rekordbox, "import_files", lambda p: called.append(p))
-    web.auto_import(str(tmp_path))
+    REAL_AUTO_IMPORT(str(tmp_path))
     assert called == []
+
+
+def test_download_never_reaches_real_auto_import(client, monkeypatch, tmp_path):
+    """Even in the dangerous state (rekordbox closed), a successful download job
+    must not reach rekordbox.import_files — the autouse stub protects every test."""
+    lines = ["Total songs: 1\n", "[ExtractAudio] Destination: x.mp3\n"]
+    monkeypatch.setattr(web.subprocess, "Popen", lambda *a, **k: FakeProc(lines, 0))
+    imported = []
+    monkeypatch.setattr(web.rekordbox, "import_files", lambda paths: imported.append(paths))
+    monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: False)  # the dangerous state
+    # Keep record_sources() off the network (see test_run_job_auto_imports_on_success).
+    monkeypatch.setattr(web, "spotify_client", lambda: (_ for _ in ()).throw(RuntimeError("missing-credentials")))
+    r = client.post("/api/download",
+                    json={"urls": ["https://open.spotify.com/track/abc"],
+                          "output": str(tmp_path)})
+    job = web.jobs[r.json()["id"]]
+    import time
+    for _ in range(200):
+        if job["status"] != "running":
+            break
+        time.sleep(0.01)
+    assert job["status"] == "done"
+    assert imported == []
