@@ -1254,6 +1254,61 @@ $("dj-save").onclick = async () => {
 };
 renderSet();   // initial empty state
 
+/* ---- camelot wheel ---- */
+function wheelArc(cx, cy, r0, r1, a0, a1) {
+  const p = (r, a) => [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1);
+  const [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
+  return `M${x0},${y0} A${r1},${r1} 0 0 1 ${x1},${y1} L${x2},${y2} A${r0},${r0} 0 0 0 ${x3},${y3} Z`;
+}
+
+function renderWheel(tracks) {
+  const size = 260, cx = size / 2, cy = size / 2;
+  const present = new Set(tracks.map((t) => t.camelot).filter(Boolean));
+  const counts = {};
+  tracks.forEach((t) => { if (t.camelot) counts[t.camelot] = (counts[t.camelot] || 0) + 1; });
+  const seg = (2 * Math.PI) / 12;
+  let paths = "";
+  for (let n = 1; n <= 12; n++) {
+    const a0 = (n - 1) * seg - seg / 2, a1 = a0 + seg;
+    for (const [ring, r0, r1] of [["A", 52, 88], ["B", 90, 126]]) {
+      const code = `${n}${ring}`;
+      const on = present.has(code);
+      paths += `<path d="${wheelArc(cx, cy, r0, r1, a0, a1)}" data-code="${code}"
+        fill="${camelotColor(code)}" opacity="${on ? 1 : 0.16}"
+        stroke="var(--panel)" stroke-width="1.5" style="cursor:pointer"/>`;
+      const mid = (a0 + a1) / 2, rm = (r0 + r1) / 2;
+      const tx = cx + rm * Math.sin(mid), ty = cy - rm * Math.cos(mid);
+      paths += `<text x="${tx}" y="${ty + 3.5}" text-anchor="middle" pointer-events="none"
+        font-size="10" font-weight="600" fill="${on ? "#fff" : "var(--faint)"}">${code}${counts[code] ? "·" + counts[code] : ""}</text>`;
+    }
+  }
+  // chords between consecutive tracks show each harmonic move
+  let chords = "";
+  const pos = (code) => {
+    const n = parseInt(code), ring = code.endsWith("A");
+    const a = (n - 1) * seg, r = ring ? 70 : 108;
+    return [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  };
+  const seq = tracks.filter((t) => t.camelot);
+  for (let i = 0; i < seq.length - 1; i++) {
+    if (seq[i].camelot === seq[i + 1].camelot) continue;
+    const [x0, y0] = pos(seq[i].camelot), [x1, y1] = pos(seq[i + 1].camelot);
+    chords += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}"
+      stroke="var(--text)" stroke-width="1.4" opacity="0.5" marker-end="url(#dj-arr)"/>`;
+  }
+  $("dj-wheel").innerHTML = `<svg viewBox="0 0 ${size} ${size}" width="100%">
+    <defs><marker id="dj-arr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="var(--text)" opacity="0.6"/></marker></defs>
+    ${paths}${chords}</svg>`;
+}
+$("dj-wheel").addEventListener("click", (e) => {
+  const code = e.target.closest("path[data-code]")?.dataset.code;
+  if (!code) return;
+  $("dj-camelot").value = $("dj-camelot").value === code ? "" : code;
+  refreshDJTracks();
+});
+
 /* ---- boot ---- */
 (async () => {
   const cfg = await (await fetch("/api/config")).json();
