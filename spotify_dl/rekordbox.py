@@ -87,3 +87,78 @@ def find_duplicates(paths, existing):
         else:
             new.append(p)
     return new, dupes
+
+
+# ---- read layer ----
+
+def is_rekordbox_running():
+    from pyrekordbox.utils import get_rekordbox_pid
+    return get_rekordbox_pid() != 0
+
+
+def open_db():
+    """Open the live rekordbox DB. Import is lazy so pure logic above works
+    without pyrekordbox key extraction."""
+    from pyrekordbox import Rekordbox6Database
+    return Rekordbox6Database()
+
+
+def _record(c):
+    """Normalize a DjmdContent row to the track record the API serves."""
+    bpm = (c.BPM or 0) / 100 or None
+    key = c.Key.ScaleName if c.Key else None
+    path = c.FolderPath or ""
+    return {
+        "id": str(c.ID),
+        "title": c.Title or Path(path).stem,
+        "artist": c.Artist.Name if c.Artist else "",
+        "bpm": bpm,
+        "key_name": key,
+        "camelot": to_camelot(key),
+        "file_path": path,
+        "duration": c.Length or None,
+        "status": "analyzed" if (bpm and key) else "pending",
+    }
+
+
+def _playlist_names(db):
+    """content id -> [playlist names]."""
+    from pyrekordbox.db6 import tables
+    names = {}
+    rows = (
+        db.session.query(tables.DjmdSongPlaylist.ContentID, tables.DjmdPlaylist.Name)
+        .join(tables.DjmdPlaylist,
+              tables.DjmdSongPlaylist.PlaylistID == tables.DjmdPlaylist.ID)
+        .all()
+    )
+    for cid, name in rows:
+        names.setdefault(str(cid), []).append(name)
+    return names
+
+
+def load_tracks():
+    """All collection tracks as normalized records (sampler content excluded)."""
+    db = open_db()
+    try:
+        playlists = _playlist_names(db)
+        out = []
+        for c in db.get_content():
+            if "/Sampler/" in (c.FolderPath or ""):
+                continue
+            rec = _record(c)
+            rec["playlists"] = playlists.get(rec["id"], [])
+            out.append(rec)
+        return out
+    finally:
+        db.close()
+
+
+# ---- write guards ----
+
+def backup_master_db():
+    """Timestamped copy of master.db next to rekordbox's own backups.
+    Called before EVERY write."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = MASTER_DB.with_name(f"master.backup.spotify-dl.{stamp}.db")
+    shutil.copy2(MASTER_DB, dest)
+    return dest

@@ -75,3 +75,74 @@ def test_missing_duration_matches_on_name_alone(monkeypatch):
     monkeypatch.setattr(rb, "file_tags", lambda p: ("Artist", "Song", None))
     new, dupes = rb.find_duplicates(["/d/x.mp3"], [EX(duration=None)])
     assert new == [] and len(dupes) == 1
+
+
+# ---- read layer (record shaping is pure; live read is guarded) ----
+
+from pathlib import Path
+
+
+class FakeKey:
+    def __init__(self, name):
+        self.ScaleName = name
+
+
+class FakeArtist:
+    def __init__(self, name):
+        self.Name = name
+
+
+class FakeContent:
+    def __init__(self, id=1, title="Song", artist="Artist", bpm=12400,
+                 key="Am", path="/lib/a.mp3", length=200):
+        self.ID = id
+        self.Title = title
+        self.Artist = FakeArtist(artist) if artist else None
+        self.BPM = bpm
+        self.Key = FakeKey(key) if key else None
+        self.FolderPath = path
+        self.Length = length
+
+
+def test_record_analyzed_track():
+    r = rb._record(FakeContent())
+    assert r == {
+        "id": "1", "title": "Song", "artist": "Artist", "bpm": 124.0,
+        "key_name": "Am", "camelot": "8A", "file_path": "/lib/a.mp3",
+        "duration": 200, "status": "analyzed",
+    }
+
+
+def test_record_pending_when_unanalyzed():
+    r = rb._record(FakeContent(bpm=0, key=None))
+    assert r["status"] == "pending"
+    assert r["bpm"] is None and r["camelot"] is None
+
+
+def test_record_falls_back_to_filename():
+    r = rb._record(FakeContent(title=None, artist=None, path="/lib/Cool Track.mp3"))
+    assert r["title"] == "Cool Track" and r["artist"] == ""
+
+
+def test_backup_master_db(tmp_path, monkeypatch):
+    src = tmp_path / "master.db"
+    src.write_bytes(b"db-bytes")
+    monkeypatch.setattr(rb, "MASTER_DB", src)
+    dest = rb.backup_master_db()
+    assert dest.exists() and dest.read_bytes() == b"db-bytes"
+    assert dest.name.startswith("master.backup.spotify-dl.")
+    assert dest.parent == src.parent
+
+
+LIVE_DB = Path.home() / "Library/Pioneer/rekordbox/master.db"
+
+
+@pytest.mark.skipif(not LIVE_DB.exists(), reason="no rekordbox db on this machine")
+def test_live_read_collection():
+    tracks = rb.load_tracks()
+    assert len(tracks) > 0
+    analyzed = [t for t in tracks if t["status"] == "analyzed"]
+    assert analyzed, "expected at least one analyzed track"
+    t = analyzed[0]
+    assert t["bpm"] and t["camelot"] and t["file_path"]
+    assert not any("/Sampler/" in t["file_path"] for t in tracks)
