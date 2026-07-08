@@ -164,28 +164,31 @@ This drives the set energy curve. BPM is always available as a secondary arc.
   `{imported: [...], skipped_duplicates: [...]}`. Refuses if rekordbox is running; backs up
   `master.db` first. Normally called automatically on download completion; exposed for
   manual re-trigger.
-- `POST /api/dj/suggest-order` — body: list of track ids. Returns the suggested order and,
-  for each adjacent pair, a compatibility rating (`good` / `ok` / `clash`). Read-only.
+- `POST /api/dj/compatibility` — body: list of track ids in their current order. Returns,
+  for each adjacent pair, a compatibility rating (`good` / `ok` / `clash`) using the harmonic
+  + tempo rules. Read-only. This is a passive hint on the *user's own* order — it does not
+  reorder anything (auto-ordering is deferred; see Out of scope).
 - `POST /api/dj/export` — body: set name + ordered track ids. **Always creates a new
   playlist** (`create_playlist`) — if the name exists, it auto-uniquifies (e.g. appends a
   number/timestamp) rather than touching the existing one — then `add_to_playlist` in order.
   Never modifies or overwrites an existing playlist or track. Refuses if rekordbox is
   running; backs up `master.db` first.
 
-## Set ordering (v1)
+## Set ordering (v1): manual, with passive compatibility hints
 
-Greedy nearest-neighbor, explainable and overridable:
+v1 ordering is **manual**. The DJ arranges the set herself by dragging tracks; the tool does
+not auto-reorder or suggest a full order (automatic ordering is deferred — see Out of scope).
 
-1. Start from the user-chosen first track (or the lowest-BPM track if none chosen).
-2. Repeatedly append the unused track with the best combined score:
-   - **Harmonic:** best if same Camelot code, or ±1 on the same ring, or relative
-     major/minor (same number, other ring); worse otherwise.
-   - **Tempo:** prefer small BPM deltas; tolerate half-time / double-time matches.
-3. Manual drag-reorder always available; the suggestion is a starting point, not a lock.
+What v1 *does* provide is a passive, non-destructive **adjacent-pair compatibility hint**
+(green/yellow/red) between each neighboring pair, so she can see at a glance whether her own
+order mixes well:
 
-Adjacent-pair compatibility hint (green/yellow/red) uses the same harmonic + tempo rules so
-the user sees why an order is good. Only `analyzed` tracks participate in ordering; `pending`
-tracks are listed but greyed until rekordbox finishes them.
+- **Harmonic:** `good` if same Camelot code, ±1 on the same ring, or relative major/minor
+  (same number, other ring); `ok` for near-misses; `clash` otherwise.
+- **Tempo:** small BPM deltas rate better; half-time / double-time counts as compatible.
+
+The hint only annotates the order she chose — it never rearranges tracks. Only `analyzed`
+tracks get a rating; `pending` tracks are listed but greyed until rekordbox finishes them.
 
 ## Export (v1): write a rekordbox playlist
 
@@ -219,9 +222,9 @@ Same vanilla-JS conventions as the existing `index.html` (no framework).
   always obvious.
 - **Track browser:** searchable/filterable table by BPM range and Camelot key; each row
   shows title, artist, BPM, Camelot, and analyzed/pending status.
-- **Set builder:** add tracks to a set; "Suggest order" button; drag to reorder;
-  green/yellow/red compatibility marker between neighbors; a set-wide BPM/key overview
-  (min–max BPM, key spread).
+- **Set builder:** add tracks to a set; drag to reorder (manual ordering); a
+  green/yellow/red compatibility marker between neighbors that updates as she reorders; a
+  set-wide BPM/key overview (min–max BPM, key spread).
 - **Camelot wheel:** a visual Camelot wheel showing the set's tracks placed on the wheel and
   the move between consecutive tracks, so harmonic jumps are visible at a glance. Clicking a
   wheel segment filters/adds compatible tracks.
@@ -234,18 +237,44 @@ Same vanilla-JS conventions as the existing `index.html` (no framework).
 
 Stretch / v2, not built in this pass:
 
+- **Automatic set ordering.** No greedy/suggested full-set ordering in v1. v1 gives her the
+  data (BPM, Camelot, energy), a Camelot wheel, and passive adjacent-pair compatibility hints,
+  but she arranges the set herself. An "auto-order this set" button (harmonic + tempo
+  nearest-neighbor, overridable) is a natural v2 addition once the manual flow feels right.
 - **Auto hot cues.** Honest auto-cueing (drop / phrase detection) is genuinely hard;
   deferred rather than shipped half-working.
 - **Driving rekordbox to analyze headlessly.** Not possible (proprietary in-app DSP);
   the tool relies on rekordbox's own Auto-Analysis while open.
 
+## Direction for a future version (not v1)
+
+A note on where this could grow, captured so the v1 design doesn't accidentally foreclose it:
+the longer-term ambition is for this to become **a genuinely better general-purpose interface
+for building DJ sets** — not just a viewer bolted onto rekordbox, but the primary place she
+assembles sets, which then flow into rekordbox. Two directions worth keeping in mind:
+
+- **Round-trip / replace, not just append.** v1 is strictly additive (new playlists only) for
+  safety. A future version could offer *managed* sets it's allowed to update in place — edit a
+  set here and have the corresponding rekordbox playlist re-sync — once the safety model
+  (backups, dedup, clear ownership of "tool-managed" playlists) is proven.
+- **File-based manipulation as an alternative backend.** Because the sets are ultimately just
+  ordered lists of local files, a future version could operate directly on files/rekordbox-XML
+  (reorder, replace, restructure) rather than going only through the live `master.db`. That
+  would loosen the open/closed rhythm and make the tool the source of truth for set-building,
+  with rekordbox as one export target among possibly others.
+
+These are explicitly **not** part of v1 and don't need to be designed now — v1 keeps the
+additive, `master.db`-only, manual-ordering scope above. This note just records the intended
+trajectory so v1's boundaries are understood as a starting point, not the ceiling.
+
 ## Testing
 
 - **Camelot mapping:** pure-function unit tests over all 24 keys, both sharp/flat spellings,
   and the unknown/None fallback.
-- **Ordering:** unit tests on `suggest-order` with small fixed track sets — assert harmonic
-  adjacency and BPM smoothing behavior, and that a fully-compatible set returns all-green
-  neighbor ratings.
+- **Compatibility hints:** unit tests on `compatibility` with small fixed track sets — assert
+  that adjacent-pair ratings follow the harmonic + tempo rules (e.g. same Camelot / ±1 / relative
+  major-minor rate `good`, a distant key + big BPM jump rates `clash`), and that a fully-
+  compatible order returns all-green. No auto-ordering is tested (it's out of scope).
 - **rekordbox read:** a fixture/guarded test that reads the collection if a rekordbox DB is
   present, skipped otherwise (matches the existing environment-dependent tests in
   `tests/test_web.py`).
