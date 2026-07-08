@@ -492,10 +492,10 @@ def test_index_serves_dist_when_present(client, monkeypatch, tmp_path):
     assert r.status_code == 200 and "console.log" in r.text
 
 
-def test_index_falls_back_to_legacy(client, monkeypatch, tmp_path):
+def test_index_500_when_not_built(client, monkeypatch, tmp_path):
     monkeypatch.setattr(web, "DIST_DIR", tmp_path / "nope")
     r = client.get("/")
-    assert r.status_code == 200 and "spotify-dl" in r.text
+    assert r.status_code == 500 and "bun run build" in r.json()["detail"]
 
 
 def test_assets_blocks_traversal(client, monkeypatch, tmp_path):

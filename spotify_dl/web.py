@@ -826,9 +826,9 @@ def dist_assets(path: str):
 @app.get("/")
 def index():
     dist_index = DIST_DIR / "index.html"
-    if dist_index.is_file():
-        return FileResponse(dist_index)
-    return FileResponse(STATIC_DIR / "index.html")
+    if not dist_index.is_file():
+        raise HTTPException(500, "frontend not built — run: cd frontend && bun install && bun run build")
+    return FileResponse(dist_index)
 
 
 def main():
