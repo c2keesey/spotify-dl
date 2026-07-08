@@ -723,11 +723,15 @@ def dj_status(path: str = ""):
         "analyzed": sum(1 for t in tracks if t["status"] == "analyzed"),
         "pending": sum(1 for t in tracks if t["status"] == "pending"),
         "not_imported": not_imported,
+        "missing": sum(1 for t in tracks if t["file_state"] == "missing"),
+        "unmounted": sum(1 for t in tracks if t["file_state"] == "unmounted"),
+        "not_a_file": sum(1 for t in tracks if t["file_state"] == "not_a_file"),
     }
 
 
 @app.get("/api/dj/tracks")
-def dj_tracks(bpm_min: float = 0, bpm_max: float = 0, camelot: str = "", q: str = ""):
+def dj_tracks(bpm_min: float = 0, bpm_max: float = 0, camelot: str = "",
+              q: str = "", genre: str = "", file_state: str = ""):
     tracks = _dj_tracks_or_503()
     if bpm_min:
         tracks = [t for t in tracks if t["bpm"] and t["bpm"] >= bpm_min]
@@ -739,6 +743,10 @@ def dj_tracks(bpm_min: float = 0, bpm_max: float = 0, camelot: str = "", q: str 
         needle = q.strip().lower()
         tracks = [t for t in tracks
                   if needle in t["title"].lower() or needle in t["artist"].lower()]
+    if genre.strip():
+        tracks = [t for t in tracks if (t["genre"] or "") == genre.strip()]
+    if file_state.strip():
+        tracks = [t for t in tracks if t["file_state"] == file_state.strip()]
     return {"tracks": tracks}
 
 

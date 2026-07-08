@@ -5,8 +5,10 @@ Reads rekordbox's collection (BPM/key analysis), imports downloaded tracks
 is guarded: refuses while rekordbox runs, backs up master.db first.
 """
 
+import os
 import re
 import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -89,6 +91,47 @@ def find_duplicates(paths, existing):
     return new, dupes
 
 
+# ---- file presence ----
+
+# Whether a track's audio file is actually on disk. Distinguishing an
+# unmounted external drive from a genuinely missing file matters: 926 of the
+# 1437 tracks point at files that moved, and reporting a whole disconnected
+# volume as "missing" would be worse than not checking at all.
+_PRESENCE_CACHE = {}          # path -> (state, monotonic timestamp)
+_PRESENCE_TTL = 60.0
+_PRESENCE_LOCK = threading.Lock()
+
+
+def file_state(path):
+    """One of 'present', 'missing', 'unmounted', 'not_a_file'.
+
+    'not_a_file' — not an absolute filesystem path (spotify:… URIs, empty
+    strings, relative paths). 'unmounted' — under a /Volumes/<name> whose root
+    is not mounted. 'missing' — a real absolute path whose volume is present
+    but the file is gone. 'present' — the file exists."""
+    if not path or not os.path.isabs(path):
+        return "not_a_file"
+    parts = Path(path).parts
+    if len(parts) >= 3 and parts[1] == "Volumes":
+        if not os.path.exists(os.path.join("/Volumes", parts[2])):
+            return "unmounted"
+    return "present" if os.path.exists(path) else "missing"
+
+
+def _cached_file_state(path):
+    """file_state() memoized per path with a 60s TTL, so load_tracks() does not
+    re-stat all 1437 files on every request. Thread-safe."""
+    now = time.monotonic()
+    with _PRESENCE_LOCK:
+        hit = _PRESENCE_CACHE.get(path)
+        if hit and now - hit[1] < _PRESENCE_TTL:
+            return hit[0]
+    state = file_state(path)
+    with _PRESENCE_LOCK:
+        _PRESENCE_CACHE[path] = (state, now)
+    return state
+
+
 # ---- read layer ----
 
 def is_rekordbox_running():
@@ -118,6 +161,8 @@ def _record(c):
         "file_path": path,
         "duration": c.Length or None,
         "status": "analyzed" if (bpm and key) else "pending",
+        "genre": c.Genre.Name if c.Genre else None,
+        "file_state": _cached_file_state(path),
     }
 
 

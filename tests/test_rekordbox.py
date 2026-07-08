@@ -92,24 +92,32 @@ class FakeArtist:
         self.Name = name
 
 
+class FakeGenre:
+    def __init__(self, name):
+        self.Name = name
+
+
 class FakeContent:
     def __init__(self, id=1, title="Song", artist="Artist", bpm=12400,
-                 key="Am", path="/lib/a.mp3", length=200):
+                 key="Am", path="/lib/a.mp3", length=200, genre="House"):
         self.ID = id
         self.Title = title
         self.Artist = FakeArtist(artist) if artist else None
         self.BPM = bpm
         self.Key = FakeKey(key) if key else None
+        self.Genre = FakeGenre(genre) if genre else None
         self.FolderPath = path
         self.Length = length
 
 
-def test_record_analyzed_track():
+def test_record_analyzed_track(monkeypatch):
+    monkeypatch.setattr(rb, "_cached_file_state", lambda p: "missing")
     r = rb._record(FakeContent())
     assert r == {
         "id": "1", "title": "Song", "artist": "Artist", "bpm": 124.0,
         "key_name": "Am", "camelot": "8A", "file_path": "/lib/a.mp3",
-        "duration": 200, "status": "analyzed",
+        "duration": 200, "status": "analyzed", "genre": "House",
+        "file_state": "missing",
     }
 
 
@@ -122,6 +130,60 @@ def test_record_pending_when_unanalyzed():
 def test_record_falls_back_to_filename():
     r = rb._record(FakeContent(title=None, artist=None, path="/lib/Cool Track.mp3"))
     assert r["title"] == "Cool Track" and r["artist"] == ""
+
+
+def test_record_genre_present_and_absent():
+    assert rb._record(FakeContent(genre="Techno"))["genre"] == "Techno"
+    assert rb._record(FakeContent(genre=None))["genre"] is None
+
+
+# ---- file_state ----
+
+def test_file_state_present(tmp_path):
+    f = tmp_path / "there.mp3"
+    f.write_text("x")
+    assert rb.file_state(str(f)) == "present"
+
+
+def test_file_state_missing(tmp_path):
+    # real absolute path, its volume (/) is present, but the file is not there
+    assert rb.file_state(str(tmp_path / "gone.mp3")) == "missing"
+
+
+def test_file_state_not_a_file():
+    assert rb.file_state("spotify:track:4uLU6hMCjMI75M1A2tKUQC") == "not_a_file"
+    assert rb.file_state("") == "not_a_file"
+    assert rb.file_state("relative/path.mp3") == "not_a_file"
+
+
+def test_file_state_unmounted_volume():
+    # a /Volumes/<name> whose root is not mounted must read "unmounted",
+    # never "missing" — a whole disconnected drive is not a missing file.
+    path = "/Volumes/NoSuchDrive_test_xyz/Music/track.mp3"
+    assert rb.file_state(path) == "unmounted"
+
+
+# ---- presence cache ----
+
+def test_presence_cache_avoids_second_stat(monkeypatch):
+    rb._PRESENCE_CACHE.clear()
+    calls = []
+    monkeypatch.setattr(rb, "file_state", lambda p: calls.append(p) or "present")
+    assert rb._cached_file_state("/lib/x.mp3") == "present"
+    assert rb._cached_file_state("/lib/x.mp3") == "present"
+    assert calls == ["/lib/x.mp3"]                 # second call served from cache
+
+
+def test_presence_cache_expires_after_ttl(monkeypatch):
+    rb._PRESENCE_CACHE.clear()
+    calls = []
+    monkeypatch.setattr(rb, "file_state", lambda p: calls.append(p) or "present")
+    t = [1000.0]
+    monkeypatch.setattr(rb.time, "monotonic", lambda: t[0])
+    rb._cached_file_state("/lib/x.mp3")
+    t[0] += rb._PRESENCE_TTL + 1                    # jump past the TTL
+    rb._cached_file_state("/lib/x.mp3")
+    assert calls == ["/lib/x.mp3", "/lib/x.mp3"]    # re-stated after expiry
 
 
 def test_backup_master_db(tmp_path, monkeypatch):

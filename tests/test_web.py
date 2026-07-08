@@ -323,7 +323,8 @@ def test_cron_update_missing(client, monkeypatch):
 def DJTRACK(**kw):
     base = {"id": "1", "title": "Song", "artist": "Artist", "bpm": 124.0,
             "key_name": "Am", "camelot": "8A", "file_path": "/lib/a.mp3",
-            "duration": 200, "status": "analyzed", "playlists": []}
+            "duration": 200, "status": "analyzed", "playlists": [],
+            "genre": "House", "file_state": "present"}
     base.update(kw)
     return base
 
@@ -334,18 +335,23 @@ def test_dj_status(client, monkeypatch, tmp_path):
     monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: True)
     monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
         DJTRACK(file_path=str(tmp_path / "old.mp3")),
-        DJTRACK(id="2", status="pending", bpm=None, camelot=None),
+        DJTRACK(id="2", status="pending", bpm=None, camelot=None,
+                file_state="missing"),
+        DJTRACK(id="3", file_state="unmounted"),
+        DJTRACK(id="4", file_state="not_a_file"),
     ])
     d = client.get("/api/dj/status", params={"path": str(tmp_path)}).json()
     assert d == {"running": True, "can_write": False,
-                 "analyzed": 1, "pending": 1, "not_imported": 1}
+                 "analyzed": 3, "pending": 1, "not_imported": 1,
+                 "missing": 1, "unmounted": 1, "not_a_file": 1}
 
 
 def test_dj_tracks_filters(client, monkeypatch):
     monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
         DJTRACK(),
-        DJTRACK(id="2", title="Fast One", bpm=150.0, camelot="9A"),
-        DJTRACK(id="3", title="Other", artist="Someone", bpm=124.0, camelot="8B"),
+        DJTRACK(id="2", title="Fast One", bpm=150.0, camelot="9A", genre="Techno"),
+        DJTRACK(id="3", title="Other", artist="Someone", bpm=124.0, camelot="8B",
+                file_state="missing"),
     ])
     all_ = client.get("/api/dj/tracks").json()["tracks"]
     assert len(all_) == 3
@@ -354,6 +360,10 @@ def test_dj_tracks_filters(client, monkeypatch):
     hits = client.get("/api/dj/tracks", params={"camelot": "8B"}).json()["tracks"]
     assert [t["id"] for t in hits] == ["3"]
     hits = client.get("/api/dj/tracks", params={"q": "someone"}).json()["tracks"]
+    assert [t["id"] for t in hits] == ["3"]
+    hits = client.get("/api/dj/tracks", params={"genre": "Techno"}).json()["tracks"]
+    assert [t["id"] for t in hits] == ["2"]
+    hits = client.get("/api/dj/tracks", params={"file_state": "missing"}).json()["tracks"]
     assert [t["id"] for t in hits] == ["3"]
 
 
