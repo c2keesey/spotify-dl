@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { type KeyboardEvent, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Download, Folder } from "lucide-react";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { api, ApiError } from "@/lib/api";
 import { qk, queryClient } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import type { LinkMeta } from "@/lib/types";
-import { usePreviews, type PreviewState } from "./usePreviews";
+import { type PreviewState, type Previews } from "./usePreviews";
 
 const ART = "h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-secondary bg-cover bg-center text-sm";
 
@@ -73,17 +73,23 @@ function Row({ art, name, meta, tone, children }: { art: ReactNode; name: string
 }
 
 export function PasteDeck({
+  text,
+  setText,
+  urls,
+  preview,
   outdir,
   setOutdir,
   pickerSlot,
 }: {
+  text: string;
+  setText: (v: string) => void;
+  urls: string[];
+  preview: Previews;
   outdir: string;
   setOutdir: (v: string) => void;
   pickerSlot?: ReactNode;
 }) {
-  const [text, setText] = useState("");
-  const urls = useMemo(() => text.split("\n").map((s) => s.trim()).filter(Boolean), [text]);
-  const { previews, validUrls, trackTotal, anyLoading } = usePreviews(urls);
+  const { previews, validUrls, trackTotal, anyLoading } = preview;
 
   const download = useMutation({
     mutationFn: () => api.download(validUrls, outdir.trim()),
