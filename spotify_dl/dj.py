@@ -1,6 +1,7 @@
 """Pure DJ math: Camelot key mapping, transition compatibility, track energy.
 
-No rekordbox dependency here — everything is unit-testable in isolation.
+The key and transition math is pure. Energy measurement borrows
+rekordbox.file_state to classify a path, imported lazily to avoid a cycle.
 """
 
 import json
