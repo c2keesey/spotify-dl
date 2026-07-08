@@ -1025,6 +1025,7 @@ syncThemeIcon();
 /* ==== DJ Sets tab ==== */
 let djTracks = [];            // last-fetched track records
 let djSet = [];               // ordered track ids in the working set
+const djTrackCache = {};      // every record ever fetched, immune to browser filters
 const CAMELOT_CODES = Array.from({length: 12}, (_, i) => [`${i + 1}A`, `${i + 1}B`]).flat();
 $("dj-camelot").innerHTML = '<option value="">Any key</option>' +
   CAMELOT_CODES.map((c) => `<option>${c}</option>`).join("");
@@ -1106,6 +1107,7 @@ async function refreshDJTracks() {
     return;
   }
   djTracks = d.tracks;
+  for (const t of d.tracks) djTrackCache[t.id] = t;
   renderDJRows();
 }
 
@@ -1144,7 +1146,7 @@ $("dj-rows").addEventListener("click", (e) => {
 setInterval(() => { if (!$("tab-dj").hidden) refreshDJStatus(); }, 5000);
 
 /* ---- set builder ---- */
-function djTrack(id) { return djTracks.find((t) => t.id === id); }
+function djTrack(id) { return djTrackCache[id] || djTracks.find((t) => t.id === id); }
 
 function addToSet(id) {
   if (!djSet.includes(id)) djSet.push(id);
