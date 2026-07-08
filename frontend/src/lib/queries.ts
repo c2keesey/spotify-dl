@@ -1,7 +1,16 @@
 import { QueryClient } from "@tanstack/react-query";
 
 export const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 2, refetchOnWindowFocus: false }, mutations: { retry: 0 } },
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      refetchOnWindowFocus: false,
+      // Keep polling while the window is hidden — Crate typically sits behind
+      // rekordbox while jobs run; the legacy page's setInterval polled regardless.
+      refetchIntervalInBackground: true,
+    },
+    mutations: { retry: 0 },
+  },
 });
 
 export const qk = {
