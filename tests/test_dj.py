@@ -30,3 +30,52 @@ def test_camelot_unknown_and_none():
     assert dj.to_camelot("") is None
     assert dj.to_camelot("H#m") is None
     assert dj.to_camelot(" Am ") == "8A"      # tolerates whitespace
+
+
+# ---- compatibility ----
+
+def T(camelot, bpm):
+    return {"camelot": camelot, "bpm": bpm}
+
+
+def test_same_key_same_bpm_is_good():
+    assert dj.rate_transition(T("8A", 124), T("8A", 124)) == "good"
+
+
+def test_adjacent_wheel_number_is_good():
+    assert dj.rate_transition(T("8A", 124), T("9A", 126)) == "good"
+    assert dj.rate_transition(T("8A", 124), T("7A", 122)) == "good"
+
+
+def test_wheel_wraps_12_to_1():
+    assert dj.rate_transition(T("12A", 124), T("1A", 124)) == "good"
+    assert dj.rate_transition(T("1B", 124), T("12B", 124)) == "good"
+
+
+def test_relative_major_minor_is_good():
+    assert dj.rate_transition(T("8A", 124), T("8B", 124)) == "good"
+
+
+def test_distant_key_is_clash():
+    assert dj.rate_transition(T("8A", 124), T("3B", 124)) == "clash"
+
+
+def test_big_bpm_jump_is_clash():
+    assert dj.rate_transition(T("8A", 100), T("8A", 140)) == "clash"
+
+
+def test_half_time_counts_as_compatible():
+    assert dj.rate_transition(T("8A", 140), T("8A", 70)) == "good"
+
+
+def test_two_steps_same_ring_is_ok():
+    assert dj.rate_transition(T("8A", 124), T("10A", 124)) == "ok"
+
+
+def test_compatible_key_moderate_bpm_gap_is_ok():
+    # harmonic good but ~9% tempo jump -> ok, not good, not clash
+    assert dj.rate_transition(T("8A", 120), T("8A", 131)) == "ok"
+
+
+def test_unknown_key_never_clashes_on_key_alone():
+    assert dj.rate_transition(T(None, 124), T("8A", 124)) == "ok"
