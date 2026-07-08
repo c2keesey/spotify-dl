@@ -3,6 +3,11 @@
 No rekordbox dependency here — everything is unit-testable in isolation.
 """
 
+import json
+import re
+import subprocess
+from pathlib import Path
+
 # rekordbox key name (both sharp and flat spellings) -> Camelot code.
 # Minor keys are the A ring, major keys the B ring.
 CAMELOT = {
@@ -68,3 +73,52 @@ def rate_transition(a, b):
     if h == 0 and d <= 0.06:
         return "good"
     return "ok"
+
+
+# ---- energy (EBU R128 integrated loudness via ffmpeg) ----
+
+ENERGY_CACHE = Path.home() / ".spotify_dl_energy.json"
+LOUDNESS_RE = re.compile(r"I:\s*(-?[\d.]+)\s*LUFS")
+
+
+def parse_loudness(ffmpeg_stderr):
+    """Integrated LUFS from ffmpeg's ebur128 summary, or None."""
+    matches = LOUDNESS_RE.findall(ffmpeg_stderr or "")
+    return float(matches[-1]) if matches else None
+
+
+def _load_energy_cache(cache_file):
+    try:
+        return json.loads(Path(cache_file).read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def get_energy(path, cache_file=None):
+    """Integrated loudness of an audio file, cached by path+mtime. Returns
+    LUFS (typically -20..-5; higher = louder = more energy) or None."""
+    cache_file = cache_file or ENERGY_CACHE
+    p = Path(path)
+    try:
+        key = f"{p}:{p.stat().st_mtime_ns}"
+    except OSError:
+        return None
+    cache = _load_energy_cache(cache_file)
+    if key in cache:
+        return cache[key]
+    try:
+        done = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-nostats", "-i", str(p),
+             "-af", "ebur128", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lufs = parse_loudness(done.stderr)
+    if lufs is not None:
+        cache[key] = lufs
+        try:
+            Path(cache_file).write_text(json.dumps(cache))
+        except OSError:
+            pass
+    return lufs

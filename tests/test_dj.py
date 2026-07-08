@@ -79,3 +79,49 @@ def test_compatible_key_moderate_bpm_gap_is_ok():
 
 def test_unknown_key_never_clashes_on_key_alone():
     assert dj.rate_transition(T(None, 124), T("8A", 124)) == "ok"
+
+
+# ---- energy ----
+
+FFMPEG_EBUR128_TAIL = """
+[Parsed_ebur128_0 @ 0x158e0edc0] Summary:
+
+  Integrated loudness:
+    I:         -9.8 LUFS
+    Threshold: -20.1 LUFS
+
+  Loudness range:
+    LRA:        5.5 LU
+"""
+
+
+def test_parse_loudness():
+    assert dj.parse_loudness(FFMPEG_EBUR128_TAIL) == -9.8
+
+
+def test_parse_loudness_missing():
+    assert dj.parse_loudness("no summary here") is None
+
+
+def test_get_energy_runs_ffmpeg_and_caches(tmp_path, monkeypatch):
+    song = tmp_path / "a.mp3"
+    song.write_bytes(b"x")
+    cache = tmp_path / "energy.json"
+    calls = []
+
+    class FakeDone:
+        stderr = FFMPEG_EBUR128_TAIL
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return FakeDone()
+
+    monkeypatch.setattr(dj.subprocess, "run", fake_run)
+    assert dj.get_energy(str(song), cache_file=cache) == -9.8
+    assert dj.get_energy(str(song), cache_file=cache) == -9.8   # cached
+    assert len(calls) == 1
+    assert "ebur128" in " ".join(calls[0])
+
+
+def test_get_energy_missing_file(tmp_path):
+    assert dj.get_energy(str(tmp_path / "gone.mp3"), cache_file=tmp_path / "c.json") is None
