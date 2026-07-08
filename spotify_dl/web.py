@@ -814,6 +814,14 @@ def auto_import(output):
 DIST_DIR = STATIC_DIR / "dist"
 
 
+@app.get("/favicon.svg")
+def favicon():
+    f = DIST_DIR / "favicon.svg"
+    if not f.is_file():
+        raise HTTPException(404, "no favicon")
+    return FileResponse(f)
+
+
 @app.get("/assets/{path:path}")
 def dist_assets(path: str):
     f = (DIST_DIR / "assets" / path).resolve()

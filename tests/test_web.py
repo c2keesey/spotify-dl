@@ -478,7 +478,7 @@ def test_download_never_reaches_real_auto_import(client, monkeypatch, tmp_path):
     assert imported == []
 
 
-# ---- static serving (dist preferred, legacy fallback) ----
+# ---- static serving (dist required) ----
 
 def test_index_serves_dist_when_present(client, monkeypatch, tmp_path):
     dist = tmp_path / "dist"
@@ -496,6 +496,14 @@ def test_index_500_when_not_built(client, monkeypatch, tmp_path):
     monkeypatch.setattr(web, "DIST_DIR", tmp_path / "nope")
     r = client.get("/")
     assert r.status_code == 500 and "bun run build" in r.json()["detail"]
+
+
+def test_favicon_served_from_dist(client, monkeypatch, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "favicon.svg").write_text("<svg/>")
+    monkeypatch.setattr(web, "DIST_DIR", dist)
+    assert client.get("/favicon.svg").status_code == 200
 
 
 def test_assets_blocks_traversal(client, monkeypatch, tmp_path):

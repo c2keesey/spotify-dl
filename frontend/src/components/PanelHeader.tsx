@@ -15,7 +15,7 @@ export function PanelHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center justify-between gap-3 border-b border-border/70 pb-2", className)}>
+    <div className={cn("scanlines flex items-center justify-between gap-3 border-b border-border/70 pb-2", className)}>
       <span className="panel-label">{children}</span>
       {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
     </div>
