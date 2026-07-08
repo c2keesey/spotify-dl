@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { PasteDeck } from "./PasteDeck";
 import { FolderPicker } from "./FolderPicker";
 import { SchedulePanel } from "./SchedulePanel";
+import { JobsPanel } from "./JobsPanel";
+import { LibraryPanel } from "./LibraryPanel";
 import { CronList } from "./CronList";
 import { usePreviews } from "./usePreviews";
 import type { Cron } from "@/lib/types";
@@ -47,6 +49,12 @@ export function DownloadPage({ outdir, setOutdir }: { outdir: string; setOutdir:
         />
       </div>
       <div style={{ animationDelay: "160ms" }} className="animate-[fadeUp_.4s_ease_both]">
+        <JobsPanel />
+      </div>
+      <div style={{ animationDelay: "220ms" }} className="animate-[fadeUp_.4s_ease_both]">
+        <LibraryPanel outdir={outdir} />
+      </div>
+      <div style={{ animationDelay: "280ms" }} className="animate-[fadeUp_.4s_ease_both]">
         <CronList editingId={editingCron?.id ?? null} onEdit={onEdit} />
       </div>
     </div>
