@@ -176,3 +176,83 @@ def test_load_energy_cache_non_dict(tmp_path, monkeypatch):
 
     monkeypatch.setattr(dj.subprocess, "run", lambda cmd, **kw: FakeDone())
     assert dj.get_energy(str(song), cache_file=cache) == -9.8
+
+
+# ---- measure_energy: state reporting ----
+
+class _FakeDone:
+    def __init__(self, stderr):
+        self.stderr = stderr
+
+
+def test_measure_energy_measured(tmp_path, monkeypatch):
+    song = tmp_path / "a.mp3"
+    song.write_bytes(b"x")
+    cache = tmp_path / "energy.json"
+    monkeypatch.setattr(dj.subprocess, "run",
+                        lambda cmd, **kw: _FakeDone(FFMPEG_EBUR128_TAIL))
+    assert dj.measure_energy(str(song), cache_file=cache) == {
+        "lufs": -9.8, "state": "measured"}
+
+
+def test_measure_energy_missing(tmp_path):
+    assert dj.measure_energy(str(tmp_path / "gone.mp3"),
+                             cache_file=tmp_path / "c.json") == {
+        "lufs": None, "state": "missing"}
+
+
+def test_measure_energy_not_a_file(tmp_path):
+    # a spotify: URI is not an absolute path -> missing, never a crash
+    assert dj.measure_energy("spotify:track:abc",
+                             cache_file=tmp_path / "c.json") == {
+        "lufs": None, "state": "missing"}
+
+
+def test_measure_energy_failed_ffmpeg_error(tmp_path, monkeypatch):
+    song = tmp_path / "a.mp3"
+    song.write_bytes(b"x")
+
+    def boom(cmd, **kw):
+        raise OSError("ffmpeg not installed")
+
+    monkeypatch.setattr(dj.subprocess, "run", boom)
+    assert dj.measure_energy(str(song), cache_file=tmp_path / "c.json") == {
+        "lufs": None, "state": "failed"}
+
+
+def test_measure_energy_failed_parse(tmp_path, monkeypatch):
+    song = tmp_path / "a.mp3"
+    song.write_bytes(b"x")
+    monkeypatch.setattr(dj.subprocess, "run",
+                        lambda cmd, **kw: _FakeDone("garbage, no summary"))
+    assert dj.measure_energy(str(song), cache_file=tmp_path / "c.json") == {
+        "lufs": None, "state": "failed"}
+
+
+def test_measure_energy_failed_not_cached(tmp_path, monkeypatch):
+    """A failed measurement must never be written to the on-disk cache — the
+    file may reappear or ffmpeg may be installed later."""
+    song = tmp_path / "a.mp3"
+    song.write_bytes(b"x")
+    cache = tmp_path / "energy.json"
+    monkeypatch.setattr(dj.subprocess, "run",
+                        lambda cmd, **kw: _FakeDone("no summary"))
+    dj.measure_energy(str(song), cache_file=cache)
+    assert dj._load_energy_cache(cache) == {}
+
+
+def test_measure_energy_uses_cache_without_ffmpeg(tmp_path, monkeypatch):
+    song = tmp_path / "a.mp3"
+    song.write_bytes(b"x")
+    cache = tmp_path / "energy.json"
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return _FakeDone(FFMPEG_EBUR128_TAIL)
+
+    monkeypatch.setattr(dj.subprocess, "run", fake_run)
+    assert dj.measure_energy(str(song), cache_file=cache)["state"] == "measured"
+    second = dj.measure_energy(str(song), cache_file=cache)
+    assert second == {"lufs": -9.8, "state": "measured"}
+    assert len(calls) == 1   # cached hit, ffmpeg not re-invoked

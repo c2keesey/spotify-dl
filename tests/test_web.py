@@ -410,10 +410,17 @@ def test_dj_compatibility(client, monkeypatch):
 
 def test_dj_energy(client, monkeypatch):
     monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
-        DJTRACK(id="1", file_path="/lib/a.mp3")])
-    monkeypatch.setattr(web.dj, "get_energy", lambda path: -9.8)
-    d = client.post("/api/dj/energy", json={"ids": ["1", "999"]}).json()
-    assert d["energy"] == {"1": -9.8, "999": None}
+        DJTRACK(id="1", file_path="/lib/a.mp3"),
+        DJTRACK(id="2", file_path="/lib/gone.mp3")])
+    states = {"/lib/a.mp3": {"lufs": -9.8, "state": "measured"},
+              "/lib/gone.mp3": {"lufs": None, "state": "missing"}}
+    monkeypatch.setattr(web.dj, "measure_energy", lambda path: states[path])
+    d = client.post("/api/dj/energy",
+                    json={"ids": ["1", "2", "999"]}).json()
+    # energy map keeps its exact existing shape: {id: float|None}
+    assert d["energy"] == {"1": -9.8, "2": None, "999": None}
+    # sibling state map explains why each is what it is
+    assert d["state"] == {"1": "measured", "2": "missing", "999": "missing"}
 
 
 def test_dj_export(client, monkeypatch):

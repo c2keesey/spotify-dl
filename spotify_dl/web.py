@@ -787,13 +787,20 @@ def dj_compatibility(req: DJIdsRequest):
 
 @app.post("/api/dj/energy")
 def dj_energy(req: DJIdsRequest):
-    """Integrated loudness for the given tracks (cached; computed on demand)."""
+    """Integrated loudness for the given tracks (cached; computed on demand).
+
+    `energy` keeps its existing shape ({id: float|None}); the sibling `state`
+    map ({id: "measured"|"missing"|"failed"}) explains a null so the UI can say
+    why a value is absent instead of showing a blank panel."""
     by_id = {t["id"]: t for t in _dj_tracks_or_503()}
-    out = {}
+    energy, state = {}, {}
     for i in req.ids:
         t = by_id.get(i)
-        out[i] = dj.get_energy(t["file_path"]) if t else None
-    return {"energy": out}
+        result = dj.measure_energy(t["file_path"]) if t else {
+            "lufs": None, "state": "missing"}
+        energy[i] = result["lufs"]
+        state[i] = result["state"]
+    return {"energy": energy, "state": state}
 
 
 @app.post("/api/dj/export")

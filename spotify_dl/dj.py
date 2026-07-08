@@ -101,19 +101,34 @@ def _load_energy_cache(cache_file):
     return data if isinstance(data, dict) else {}
 
 
-def get_energy(path, cache_file=None):
-    """Integrated loudness of an audio file, cached by path+mtime. Returns
-    LUFS (typically -20..-5; higher = louder = more energy) or None."""
+def measure_energy(path, cache_file=None):
+    """Integrated loudness with a reason when it can't be measured. Returns
+    {"lufs": float|None, "state": "measured"|"missing"|"failed"}:
+
+      "missing"  — the file isn't on disk (or the path isn't a file at all).
+      "failed"   — the file exists but ffmpeg errored or its output didn't parse.
+      "measured" — a real LUFS value (typically -20..-5; higher = louder).
+
+    Cached by path+mtime. Only successful measurements are cached; the on-disk
+    format is unchanged (bare LUFS floats keyed by "<path>:<mtime_ns>"), so a
+    file that reappears or an ffmpeg installed later gets a fresh attempt.
+
+    The lock guards only the cache read (hit) and the re-read+write. ffmpeg
+    itself runs unlocked — it can take up to 120s and must not serialize."""
     cache_file = cache_file or ENERGY_CACHE
+    # rekordbox imports dj, so this import must stay lazy to avoid a cycle.
+    from spotify_dl import rekordbox
+    if rekordbox.file_state(str(path)) != "present":
+        return {"lufs": None, "state": "missing"}
     p = Path(path)
     try:
         key = f"{p}:{p.stat().st_mtime_ns}"
     except OSError:
-        return None
+        return {"lufs": None, "state": "missing"}   # vanished after the check
     with _ENERGY_LOCK:
         cache = _load_energy_cache(cache_file)
         if key in cache:
-            return cache[key]
+            return {"lufs": cache[key], "state": "measured"}
     try:
         done = subprocess.run(
             ["ffmpeg", "-hide_banner", "-nostats", "-i", str(p),
@@ -121,14 +136,21 @@ def get_energy(path, cache_file=None):
             capture_output=True, text=True, timeout=120,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return None
+        return {"lufs": None, "state": "failed"}
     lufs = parse_loudness(done.stderr)
-    if lufs is not None:
-        with _ENERGY_LOCK:
-            cache = _load_energy_cache(cache_file)   # re-read: another thread may have written
-            cache[key] = lufs
-            try:
-                Path(cache_file).write_text(json.dumps(cache))
-            except OSError:
-                pass
-    return lufs
+    if lufs is None:
+        return {"lufs": None, "state": "failed"}
+    with _ENERGY_LOCK:
+        cache = _load_energy_cache(cache_file)   # re-read: another thread may have written
+        cache[key] = lufs
+        try:
+            Path(cache_file).write_text(json.dumps(cache))
+        except OSError:
+            pass
+    return {"lufs": lufs, "state": "measured"}
+
+
+def get_energy(path, cache_file=None):
+    """Integrated loudness (LUFS) of an audio file or None. Thin wrapper over
+    measure_energy for callers that only want the number."""
+    return measure_energy(path, cache_file)["lufs"]
