@@ -57,3 +57,7 @@ excalidraw.log
 .dolt/
 *.db
 .beads-credential-key
+
+# Crate frontend
+spotify_dl/static/dist/
+frontend/node_modules/
