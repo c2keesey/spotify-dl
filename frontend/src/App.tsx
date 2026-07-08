@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Shell } from "@/components/Shell";
 import { DownloadPage } from "@/pages/Download";
+import { DjSetsPage } from "@/pages/DjSets";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/queries";
 
@@ -25,10 +26,7 @@ export default function App() {
       {page === "download" ? (
         <DownloadPage outdir={outdir} setOutdir={setOutdir} />
       ) : (
-        <div style={{ animationDelay: "40ms" }} className="animate-[fadeUp_.4s_ease_both]">
-          <h1 className="font-display text-2xl tracking-widest text-foreground">DJ SETS</h1>
-          <p className="panel-label mt-3">dj page — task 9</p>
-        </div>
+        <DjSetsPage outdir={outdir} />
       )}
     </Shell>
   );
