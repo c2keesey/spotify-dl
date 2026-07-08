@@ -1,0 +1,13 @@
+export type Progress = { total: number; done: number; failed: number; current: string; pct: number; failed_tracks: string[]; unmatched: string[] };
+export type LinkMeta = { url: string; kind: string | null; name: string | null; image: string | null; count: number | null; error: string | null };
+export type Job = { id: number; urls: string[]; output: string; status: "running" | "done" | "failed"; meta: LinkMeta[]; progress: Progress; error: string | null };
+export type LibraryFolder = { name: string; path: string; tracks: number; url: string | null };
+export type Library = { path: string; folders: LibraryFolder[]; loose: number };
+export type CronFields = { freq: "daily" | "weekly" | "hourly"; hour?: number; minute?: number; dow?: number; every?: number };
+export type Cron = { id: string; schedule: string; friendly: string; enabled: boolean; managed: boolean; command: string; output?: string; label?: string; urls?: string[]; fields?: CronFields | null };
+export type AppConfig = { default_output: string; places: { label: string; path: string }[] };
+export type BrowseResult = { path: string; parent: string | null; dirs: string[] };
+export type DjTrack = { id: string; title: string; artist: string; bpm: number | null; key_name: string | null; camelot: string | null; file_path: string; duration: number | null; status: "analyzed" | "pending"; playlists: string[] };
+export type DjStatus = { running: boolean; can_write: boolean; analyzed: number; pending: number; not_imported: number };
+export type Rating = "good" | "ok" | "clash";
+export type ImportResult = { imported: string[]; skipped_duplicates: { path: string; reason: string }[] };
