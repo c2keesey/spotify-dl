@@ -90,6 +90,17 @@
   .press:active { transform: translateY(1px); }
 }
 
+/* power-on: panels rise, LED lamps blink once (CSS only) */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ledBlink {
+  0%, 100% { opacity: 1; }
+  30% { opacity: 0.2; }
+  60% { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
