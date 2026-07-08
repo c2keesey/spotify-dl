@@ -350,3 +350,94 @@ def test_dj_tracks_db_error_is_503(client, monkeypatch):
         raise RuntimeError("no db")
     monkeypatch.setattr(web.rekordbox, "load_tracks", boom)
     assert client.get("/api/dj/tracks").status_code == 503
+
+
+# ---- dj: import / compatibility / energy / export ----
+
+def test_dj_import_reports_both_lists(client, monkeypatch, tmp_path):
+    (tmp_path / "a.mp3").write_text("x")
+    monkeypatch.setattr(web.rekordbox, "import_files", lambda paths: {
+        "imported": paths, "skipped_duplicates": []})
+    d = client.post("/api/dj/import", json={"path": str(tmp_path)}).json()
+    assert d["imported"] == [str(tmp_path / "a.mp3")]
+    assert d["skipped_duplicates"] == []
+
+
+def test_dj_import_409_when_rekordbox_running(client, monkeypatch, tmp_path):
+    def refuse(paths):
+        raise web.rekordbox.RekordboxRunning("close rekordbox first")
+    monkeypatch.setattr(web.rekordbox, "import_files", refuse)
+    r = client.post("/api/dj/import", json={"path": str(tmp_path)})
+    assert r.status_code == 409
+    assert "close rekordbox" in r.json()["detail"]
+
+
+def test_dj_import_bad_path_is_400(client):
+    assert client.post("/api/dj/import", json={"path": "/no/such/dir"}).status_code == 400
+
+
+def test_dj_compatibility(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0),
+        DJTRACK(id="2", camelot="9A", bpm=126.0),
+        DJTRACK(id="3", camelot="3B", bpm=90.0),
+    ])
+    d = client.post("/api/dj/compatibility", json={"ids": ["1", "2", "3"]}).json()
+    assert d["ratings"] == ["good", "clash"]
+
+
+def test_dj_energy(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", file_path="/lib/a.mp3")])
+    monkeypatch.setattr(web.dj, "get_energy", lambda path: -9.8)
+    d = client.post("/api/dj/energy", json={"ids": ["1", "999"]}).json()
+    assert d["energy"] == {"1": -9.8, "999": None}
+
+
+def test_dj_export(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "export_playlist",
+                        lambda name, ids: {"playlist": name})
+    d = client.post("/api/dj/export", json={"name": "Set", "ids": ["1"]}).json()
+    assert d == {"playlist": "Set"}
+
+
+def test_dj_export_409_when_running(client, monkeypatch):
+    def refuse(name, ids):
+        raise web.rekordbox.RekordboxRunning("close rekordbox first")
+    monkeypatch.setattr(web.rekordbox, "export_playlist", refuse)
+    assert client.post("/api/dj/export",
+                       json={"name": "Set", "ids": ["1"]}).status_code == 409
+
+
+def test_dj_export_empty_is_400(client):
+    assert client.post("/api/dj/export", json={"name": "S", "ids": []}).status_code == 400
+    assert client.post("/api/dj/export", json={"name": " ", "ids": ["1"]}).status_code == 400
+
+
+def test_run_job_auto_imports_on_success(client, monkeypatch, tmp_path):
+    lines = ["Total songs: 1\n", "[ExtractAudio] Destination: x.mp3\n"]
+    monkeypatch.setattr(web.subprocess, "Popen", lambda *a, **k: FakeProc(lines, 0))
+    imported = []
+    monkeypatch.setattr(web, "auto_import", lambda output: imported.append(output))
+    # Keep record_sources() off the network (see module docstring: "no network").
+    # Without this, a real Spotify lookup inside record_sources races the
+    # status-polling loop below whenever live credentials are configured.
+    monkeypatch.setattr(web, "spotify_client", lambda: (_ for _ in ()).throw(RuntimeError("missing-credentials")))
+    r = client.post("/api/download",
+                    json={"urls": ["https://open.spotify.com/track/abc"],
+                          "output": str(tmp_path)})
+    job = web.jobs[r.json()["id"]]
+    import time
+    for _ in range(200):
+        if job["status"] != "running":
+            break
+        time.sleep(0.01)
+    assert imported == [str(tmp_path)]
+
+
+def test_auto_import_skips_when_rekordbox_open(monkeypatch, tmp_path):
+    monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: True)
+    called = []
+    monkeypatch.setattr(web.rekordbox, "import_files", lambda p: called.append(p))
+    web.auto_import(str(tmp_path))
+    assert called == []

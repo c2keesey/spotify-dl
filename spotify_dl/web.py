@@ -87,6 +87,11 @@ def run_job(job):
             record_sources(job)
         except Exception:  # noqa: BLE001 - source mapping is best-effort
             pass
+        if job["status"] == "done":
+            try:
+                auto_import(job["output"])
+            except Exception:  # noqa: BLE001 - rekordbox import must never fail a download
+                pass
     except Exception as e:  # noqa: BLE001 - surface anything to the UI
         job["log"].append(f"error: {e}")
         job["status"] = "failed"
@@ -735,6 +740,75 @@ def dj_tracks(bpm_min: float = 0, bpm_max: float = 0, camelot: str = "", q: str 
         tracks = [t for t in tracks
                   if needle in t["title"].lower() or needle in t["artist"].lower()]
     return {"tracks": tracks}
+
+
+class DJImportRequest(BaseModel):
+    path: str
+
+
+class DJIdsRequest(BaseModel):
+    ids: list[str]
+
+
+class DJExportRequest(BaseModel):
+    name: str
+    ids: list[str]
+
+
+@app.post("/api/dj/import")
+def dj_import(req: DJImportRequest):
+    """Dedup-first import of a folder's mp3s into the rekordbox collection.
+    Called automatically after downloads; exposed for manual re-runs."""
+    p = Path(req.path).expanduser()
+    if not p.is_dir():
+        raise HTTPException(400, "no such folder")
+    files = sorted(str(f) for f in p.rglob("*.mp3"))
+    try:
+        return rekordbox.import_files(files)
+    except rekordbox.RekordboxRunning:
+        raise HTTPException(409, "close rekordbox first")
+
+
+@app.post("/api/dj/compatibility")
+def dj_compatibility(req: DJIdsRequest):
+    """Passive adjacent-pair ratings for the user's own order. Never reorders."""
+    by_id = {t["id"]: t for t in _dj_tracks_or_503()}
+    seq = [by_id.get(i, {}) for i in req.ids]
+    return {"ratings": [dj.rate_transition(a, b) for a, b in zip(seq, seq[1:])]}
+
+
+@app.post("/api/dj/energy")
+def dj_energy(req: DJIdsRequest):
+    """Integrated loudness for the given tracks (cached; computed on demand)."""
+    by_id = {t["id"]: t for t in _dj_tracks_or_503()}
+    out = {}
+    for i in req.ids:
+        t = by_id.get(i)
+        out[i] = dj.get_energy(t["file_path"]) if t else None
+    return {"energy": out}
+
+
+@app.post("/api/dj/export")
+def dj_export(req: DJExportRequest):
+    """Save the ordered set as a NEW rekordbox playlist (never overwrites)."""
+    name = req.name.strip()
+    if not name or not req.ids:
+        raise HTTPException(400, "need a set name and at least one track")
+    try:
+        return rekordbox.export_playlist(name, req.ids)
+    except rekordbox.RekordboxRunning:
+        raise HTTPException(409, "close rekordbox first")
+
+
+def auto_import(output):
+    """Best-effort import of a finished download's folder. Skips quietly when
+    rekordbox is open (the status banner surfaces the pending count instead)."""
+    if rekordbox.is_rekordbox_running():
+        return
+    p = Path(output)
+    if not p.is_dir():
+        return
+    rekordbox.import_files(sorted(str(f) for f in p.rglob("*.mp3")))
 
 
 @app.get("/")
