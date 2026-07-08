@@ -302,6 +302,45 @@
   .picker-list .ico { color: var(--faint); }
   .picker-list .none { color: var(--faint); font-size: 12px; padding: 14px 11px; }
   .picker-foot { display: flex; justify-content: space-between; gap: 10px; padding: 13px 16px; border-top: 1px solid var(--border); }
+
+  /* tabs */
+  .tabs { display: flex; gap: 6px; margin-bottom: 22px; }
+  .tab { background: transparent; border: 1px solid var(--border); color: var(--dim);
+         font-weight: 500; padding: 7px 15px; border-radius: 20px; }
+  .tab:hover { color: var(--text); background: var(--hover); filter: none; }
+  .tab.on { color: var(--accent); border-color: var(--accent-dim); }
+  body.dj-mode .wrap { max-width: 980px; }
+
+  /* dj banner */
+  .dj-banner { padding: 12px 18px; font-size: 13px; display: flex; align-items: center; gap: 10px; }
+  .dj-banner .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dj-banner .dot.open { background: var(--amber); }
+  .dj-banner .dot.closed { background: var(--accent); }
+  .dj-banner .hint { color: var(--dim); }
+  .dj-banner .spacer { flex: 1; }
+
+  /* filters + table */
+  .dj-filters { display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .dj-filters input, .dj-filters select { background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font: 13px -apple-system, sans-serif; outline: none; }
+  .dj-filters input:focus { border-color: var(--accent-dim); }
+  #dj-q { flex: 1; }
+  #dj-bpm-min, #dj-bpm-max { width: 74px; }
+  .dj-table-wrap { max-height: 380px; overflow-y: auto; }
+  .dj-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .dj-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--faint); padding: 8px 10px; position: sticky; top: 0; background: var(--panel); }
+  .dj-table td { padding: 7px 10px; border-top: 1px solid var(--border); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+  .dj-table tr:hover td { background: var(--hover); }
+  .dj-table .num { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .dj-key { display: inline-block; min-width: 30px; text-align: center; font-size: 11px; font-weight: 600;
+    border-radius: 20px; padding: 2px 7px; }
+  .dj-pending { color: var(--faint); font-size: 11px; }
+  .dj-add { background: transparent; border: 1px solid var(--border); color: var(--dim);
+    font-size: 12px; padding: 3px 10px; border-radius: 7px; }
+  .dj-add:hover { color: var(--accent); border-color: var(--accent-dim); background: transparent; filter: none; }
+  .dj-add:disabled { opacity: 0.35; }
 </style>
 </head>
 <body>
@@ -313,6 +352,12 @@
     <button class="theme-btn" id="theme" title="Toggle light / dark" aria-label="Toggle theme"></button>
   </header>
 
+  <nav class="tabs">
+    <button class="tab on" data-tab="dl">Download</button>
+    <button class="tab" data-tab="dj">DJ Sets</button>
+  </nav>
+
+  <div id="tab-dl">
   <div class="card">
     <textarea id="links" placeholder="Paste Spotify or SoundCloud links, one per line" spellcheck="false"></textarea>
     <div class="previews" id="previews"></div>
@@ -360,6 +405,43 @@
     <div class="card" id="crons-card" hidden><div id="crons"></div></div>
     <div class="empty" id="crons-empty">No schedules yet.</div>
   </section>
+  </div><!-- #tab-dl -->
+
+  <div id="tab-dj" hidden>
+    <div class="dj-banner card" id="dj-banner"></div>
+
+    <section>
+      <h2>Tracks <span class="h-act" id="dj-refresh">Refresh</span></h2>
+      <div class="card">
+        <div class="dj-filters">
+          <input id="dj-q" placeholder="Search title or artist…" spellcheck="false">
+          <input id="dj-bpm-min" type="number" placeholder="BPM ≥" min="0">
+          <input id="dj-bpm-max" type="number" placeholder="BPM ≤" min="0">
+          <select id="dj-camelot"><option value="">Any key</option></select>
+        </div>
+        <div class="dj-table-wrap"><table class="dj-table">
+          <thead><tr><th></th><th>Title</th><th>Artist</th><th>BPM</th><th>Key</th><th></th></tr></thead>
+          <tbody id="dj-rows"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <section id="dj-set-section">
+      <h2>Set</h2>
+      <div class="card" id="dj-set-card">
+        <div id="dj-set-summary" class="dj-set-summary"></div>
+        <div id="dj-set-list"></div>
+        <div class="bar">
+          <input id="dj-set-name" placeholder="Set name…" spellcheck="false" class="dj-name-input">
+          <button id="dj-save">Save to rekordbox</button>
+        </div>
+      </div>
+      <div class="dj-viz">
+        <div class="card dj-viz-card"><div id="dj-wheel"></div></div>
+        <div class="card dj-viz-card"><div id="dj-energy"></div></div>
+      </div>
+    </section>
+  </div>
 </div>
 
 <div class="modal" id="picker" hidden>
@@ -915,6 +997,130 @@ $("theme").onclick = () => {
   syncThemeIcon();
 };
 syncThemeIcon();
+
+/* ==== DJ Sets tab ==== */
+let djTracks = [];            // last-fetched track records
+let djSet = [];               // ordered track ids in the working set
+const CAMELOT_CODES = Array.from({length: 12}, (_, i) => [`${i + 1}A`, `${i + 1}B`]).flat();
+$("dj-camelot").innerHTML = '<option value="">Any key</option>' +
+  CAMELOT_CODES.map((c) => `<option>${c}</option>`).join("");
+
+// Camelot color: hue around the wheel; A ring dimmer than B.
+function camelotColor(code) {
+  if (!code) return "var(--panel-2)";
+  const n = parseInt(code), ring = code.endsWith("A");
+  return `hsl(${(n - 1) * 30} 65% ${ring ? 38 : 52}% / 0.85)`;
+}
+
+// TODO(Task 11): replaced by set builder
+function addToSet(id) {}
+
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+  $("tab-dl").hidden = name !== "dl";
+  $("tab-dj").hidden = name !== "dj";
+  document.body.classList.toggle("dj-mode", name === "dj");
+  if (name === "dj") { refreshDJStatus(); refreshDJTracks(); }
+}
+document.querySelector(".tabs").addEventListener("click", (e) => {
+  const b = e.target.closest(".tab");
+  if (b) switchTab(b.dataset.tab);
+});
+
+async function refreshDJStatus() {
+  const out = $("outdir").value.trim();
+  let s;
+  try {
+    const r = await fetch("/api/dj/status?path=" + encodeURIComponent(out));
+    if (!r.ok) throw new Error();
+    s = await r.json();
+  } catch {
+    $("dj-banner").innerHTML = `<span class="hint">Couldn't read the rekordbox database.</span>`;
+    return;
+  }
+  const dot = `<span class="dot ${s.running ? "open" : "closed"}"></span>`;
+  const state = s.running ? "rekordbox is open" : "rekordbox is closed";
+  let hint = "";
+  if (s.pending) hint = s.running
+    ? `${s.pending} track${s.pending === 1 ? "" : "s"} waiting for analysis — rekordbox analyzes them while open (needs Auto-Analysis on).`
+    : `${s.pending} track${s.pending === 1 ? "" : "s"} not analyzed yet — open rekordbox to analyze.`;
+  const importBtn = s.not_imported
+    ? `<button id="dj-import" ${s.running ? "disabled title='Close rekordbox first'" : ""}>Import ${s.not_imported} new</button>`
+    : "";
+  $("dj-banner").innerHTML =
+    `${dot}<span>${esc(state)}</span><span class="hint">${esc(hint)}</span><span class="spacer"></span>${importBtn}`;
+  const btn = $("dj-import");
+  if (btn) btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = "Importing…";
+    try {
+      const r = await fetch("/api/dj/import", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: $("outdir").value.trim() }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const skipped = d.skipped_duplicates.length;
+        btn.textContent = `Imported ${d.imported.length}` + (skipped ? `, ${skipped} dup${skipped === 1 ? "" : "s"} skipped` : "");
+        setTimeout(() => { refreshDJStatus(); refreshDJTracks(); }, 1500);
+      } else {
+        btn.textContent = (await r.json()).detail || "Failed";
+      }
+    } catch { btn.textContent = "Failed"; }
+  };
+}
+
+async function refreshDJTracks() {
+  const params = new URLSearchParams();
+  if ($("dj-q").value.trim()) params.set("q", $("dj-q").value.trim());
+  if ($("dj-bpm-min").value) params.set("bpm_min", $("dj-bpm-min").value);
+  if ($("dj-bpm-max").value) params.set("bpm_max", $("dj-bpm-max").value);
+  if ($("dj-camelot").value) params.set("camelot", $("dj-camelot").value);
+  let d;
+  try {
+    const r = await fetch("/api/dj/tracks?" + params);
+    if (!r.ok) throw new Error();
+    d = await r.json();
+  } catch {
+    $("dj-rows").innerHTML = `<tr><td colspan="6" class="dj-pending">Couldn't read the rekordbox database.</td></tr>`;
+    return;
+  }
+  djTracks = d.tracks;
+  renderDJRows();
+}
+
+function renderDJRows() {
+  const inSet = new Set(djSet);
+  $("dj-rows").innerHTML = djTracks.map((t) => {
+    const key = t.camelot
+      ? `<span class="dj-key" style="background:${camelotColor(t.camelot)};color:#fff">${t.camelot}</span>`
+      : `<span class="dj-pending">${t.status === "pending" ? "analyzing…" : "—"}</span>`;
+    const add = t.status === "analyzed"
+      ? `<button class="dj-add" data-id="${t.id}" ${inSet.has(t.id) ? "disabled" : ""}>${inSet.has(t.id) ? "Added" : "+ Set"}</button>`
+      : "";
+    return `<tr>
+      <td>${t.status === "pending" ? "⏳" : ""}</td>
+      <td title="${esc(t.title)}">${esc(t.title)}</td>
+      <td title="${esc(t.artist)}">${esc(t.artist)}</td>
+      <td class="num">${t.bpm ? t.bpm.toFixed(1) : ""}</td>
+      <td>${key}</td>
+      <td>${add}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="6" class="dj-pending">No tracks match.</td></tr>`;
+}
+
+let djFilterTimer = null;
+["dj-q", "dj-bpm-min", "dj-bpm-max"].forEach((id) =>
+  $(id).addEventListener("input", () => {
+    clearTimeout(djFilterTimer);
+    djFilterTimer = setTimeout(refreshDJTracks, 300);
+  }));
+$("dj-camelot").onchange = refreshDJTracks;
+$("dj-refresh").onclick = () => { refreshDJStatus(); refreshDJTracks(); };
+$("dj-rows").addEventListener("click", (e) => {
+  const b = e.target.closest(".dj-add");
+  if (b && !b.disabled) addToSet(b.dataset.id);
+});
+setInterval(() => { if (!$("tab-dj").hidden) refreshDJStatus(); }, 5000);
 
 /* ---- boot ---- */
 (async () => {
