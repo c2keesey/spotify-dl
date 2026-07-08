@@ -11,4 +11,5 @@ export const qk = {
   crons: ["crons"] as const,
   djStatus: (path: string) => ["djStatus", path] as const,
   djTracks: (f: object) => ["djTracks", f] as const,
+  djCompat: (ids: string[]) => ["djCompat", ids] as const,
 };

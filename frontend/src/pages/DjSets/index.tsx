@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { PanelHeader } from "@/components/PanelHeader";
 import { StatusStrip } from "./StatusStrip";
 import { TrackBrowser } from "./TrackBrowser";
+import { SetRail } from "./SetRail";
 import { useSetState } from "./useSetState";
 
 /**
@@ -26,14 +27,28 @@ export function DjSetsPage({ outdir }: { outdir: string }) {
         <StatusStrip outdir={outdir} />
       </div>
 
-      <div style={{ animationDelay: "160ms" }} className="animate-[fadeUp_.4s_ease_both] space-y-3">
-        <PanelHeader>Track Browser</PanelHeader>
-        <TrackBrowser
-          camelotFilter={camelotFilter}
-          setCamelotFilter={setCamelotFilter}
-          onAdd={set.add}
-          inSet={inSet}
-        />
+      <div
+        style={{ animationDelay: "160ms" }}
+        className="grid animate-[fadeUp_.4s_ease_both] grid-cols-1 items-start gap-8 lg:grid-cols-[3fr_2fr]"
+      >
+        <div className="space-y-3">
+          <PanelHeader>Track Browser</PanelHeader>
+          <TrackBrowser
+            camelotFilter={camelotFilter}
+            setCamelotFilter={setCamelotFilter}
+            onAdd={set.add}
+            inSet={inSet}
+          />
+        </div>
+        <div className="space-y-3">
+          <PanelHeader>Set</PanelHeader>
+          <SetRail
+            setIds={set.setIds}
+            tracks={set.tracks}
+            onRemove={set.remove}
+            onReorder={set.reorder}
+          />
+        </div>
       </div>
     </div>
   );
