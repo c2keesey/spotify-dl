@@ -304,3 +304,49 @@ def test_cron_update_missing(client, monkeypatch):
         "urls": ["https://open.spotify.com/track/x"], "output": "", "freq": "daily", "hour": 3, "minute": 0,
     })
     assert r.status_code == 404
+
+
+# ---- dj: status & tracks (rekordbox layer stubbed) ----
+
+def DJTRACK(**kw):
+    base = {"id": "1", "title": "Song", "artist": "Artist", "bpm": 124.0,
+            "key_name": "Am", "camelot": "8A", "file_path": "/lib/a.mp3",
+            "duration": 200, "status": "analyzed", "playlists": []}
+    base.update(kw)
+    return base
+
+
+def test_dj_status(client, monkeypatch, tmp_path):
+    (tmp_path / "new.mp3").write_text("x")
+    (tmp_path / "old.mp3").write_text("x")
+    monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: True)
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(file_path=str(tmp_path / "old.mp3")),
+        DJTRACK(id="2", status="pending", bpm=None, camelot=None),
+    ])
+    d = client.get("/api/dj/status", params={"path": str(tmp_path)}).json()
+    assert d == {"running": True, "can_write": False,
+                 "analyzed": 1, "pending": 1, "not_imported": 1}
+
+
+def test_dj_tracks_filters(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(),
+        DJTRACK(id="2", title="Fast One", bpm=150.0, camelot="9A"),
+        DJTRACK(id="3", title="Other", artist="Someone", bpm=124.0, camelot="8B"),
+    ])
+    all_ = client.get("/api/dj/tracks").json()["tracks"]
+    assert len(all_) == 3
+    hits = client.get("/api/dj/tracks", params={"bpm_min": 140}).json()["tracks"]
+    assert [t["id"] for t in hits] == ["2"]
+    hits = client.get("/api/dj/tracks", params={"camelot": "8B"}).json()["tracks"]
+    assert [t["id"] for t in hits] == ["3"]
+    hits = client.get("/api/dj/tracks", params={"q": "someone"}).json()["tracks"]
+    assert [t["id"] for t in hits] == ["3"]
+
+
+def test_dj_tracks_db_error_is_503(client, monkeypatch):
+    def boom():
+        raise RuntimeError("no db")
+    monkeypatch.setattr(web.rekordbox, "load_tracks", boom)
+    assert client.get("/api/dj/tracks").status_code == 503

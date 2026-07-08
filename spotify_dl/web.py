@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
 
+from spotify_dl import dj, rekordbox
 from spotify_dl.spotify import get_item_name
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -690,6 +691,50 @@ def delete_cron(cron_id: str):
         raise HTTPException(404, "no such cron")
     _write_crontab(kept)
     return {"ok": True}
+
+
+# ---- dj / sets ----
+
+def _dj_tracks_or_503():
+    try:
+        return rekordbox.load_tracks()
+    except Exception as e:  # noqa: BLE001 - surface db problems as service-unavailable
+        raise HTTPException(503, f"couldn't read rekordbox database: {e}")
+
+
+@app.get("/api/dj/status")
+def dj_status(path: str = ""):
+    """Rekordbox state + analysis counts. Drives the tab's status banner."""
+    tracks = _dj_tracks_or_503()
+    running = rekordbox.is_rekordbox_running()
+    not_imported = 0
+    p = Path(path).expanduser() if path.strip() else None
+    if p and p.is_dir():
+        in_collection = {t["file_path"] for t in tracks}
+        not_imported = sum(1 for f in p.rglob("*.mp3") if str(f) not in in_collection)
+    return {
+        "running": running,
+        "can_write": not running,
+        "analyzed": sum(1 for t in tracks if t["status"] == "analyzed"),
+        "pending": sum(1 for t in tracks if t["status"] == "pending"),
+        "not_imported": not_imported,
+    }
+
+
+@app.get("/api/dj/tracks")
+def dj_tracks(bpm_min: float = 0, bpm_max: float = 0, camelot: str = "", q: str = ""):
+    tracks = _dj_tracks_or_503()
+    if bpm_min:
+        tracks = [t for t in tracks if t["bpm"] and t["bpm"] >= bpm_min]
+    if bpm_max:
+        tracks = [t for t in tracks if t["bpm"] and t["bpm"] <= bpm_max]
+    if camelot:
+        tracks = [t for t in tracks if t["camelot"] == camelot.upper()]
+    if q.strip():
+        needle = q.strip().lower()
+        tracks = [t for t in tracks
+                  if needle in t["title"].lower() or needle in t["artist"].lower()]
+    return {"tracks": tracks}
 
 
 @app.get("/")
