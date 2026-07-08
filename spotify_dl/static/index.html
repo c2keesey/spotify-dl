@@ -341,6 +341,30 @@
     font-size: 12px; padding: 3px 10px; border-radius: 7px; }
   .dj-add:hover { color: var(--accent); border-color: var(--accent-dim); background: transparent; filter: none; }
   .dj-add:disabled { opacity: 0.35; }
+  /* set builder */
+  .dj-set-summary { padding: 10px 18px; font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--border); }
+  .dj-set-summary:empty { display: none; }
+  #dj-set-list { min-height: 40px; }
+  .dj-slot { display: flex; align-items: center; gap: 10px; padding: 9px 18px; cursor: grab; }
+  .dj-slot.dragging { opacity: 0.4; }
+  .dj-slot .n { color: var(--faint); font-size: 11px; width: 18px; text-align: right; }
+  .dj-slot .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .dj-slot .t small { color: var(--dim); }
+  .dj-slot .num { font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--dim); }
+  .dj-slot .rm { background: transparent; border: none; color: var(--faint); font-size: 13px; padding: 2px 7px; }
+  .dj-slot .rm:hover { color: var(--red); filter: none; }
+  .dj-link { display: flex; align-items: center; gap: 8px; padding: 0 18px 0 46px; height: 14px; }
+  .dj-link .line { flex: none; width: 46px; height: 3px; border-radius: 2px; }
+  .dj-link.good .line { background: var(--accent); }
+  .dj-link.ok .line { background: var(--amber); }
+  .dj-link.clash .line { background: var(--red); }
+  .dj-link .why { font-size: 10.5px; color: var(--faint); }
+  .dj-empty-set { color: var(--faint); font-size: 13px; padding: 16px 18px; }
+  .dj-name-input { flex: 1; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 11px; font: 13px -apple-system, sans-serif; outline: none; }
+  .dj-name-input:focus { border-color: var(--accent-dim); }
+  .dj-viz { display: flex; gap: 16px; margin-top: 16px; }
+  .dj-viz-card { flex: 1; padding: 14px; min-height: 100px; }
 </style>
 </head>
 <body>
@@ -1012,9 +1036,6 @@ function camelotColor(code) {
   return `hsl(${(n - 1) * 30} 65% ${ring ? 38 : 52}% / 0.85)`;
 }
 
-// TODO(Task 11): replaced by set builder
-function addToSet(id) {}
-
 function switchTab(name) {
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   $("tab-dl").hidden = name !== "dl";
@@ -1121,6 +1142,115 @@ $("dj-rows").addEventListener("click", (e) => {
   if (b && !b.disabled) addToSet(b.dataset.id);
 });
 setInterval(() => { if (!$("tab-dj").hidden) refreshDJStatus(); }, 5000);
+
+/* ---- set builder ---- */
+function djTrack(id) { return djTracks.find((t) => t.id === id); }
+
+function addToSet(id) {
+  if (!djSet.includes(id)) djSet.push(id);
+  renderDJRows();
+  renderSet();
+}
+
+function removeFromSet(id) {
+  djSet = djSet.filter((x) => x !== id);
+  renderDJRows();
+  renderSet();
+}
+
+async function renderSet() {
+  const list = $("dj-set-list");
+  const tracks = djSet.map(djTrack).filter(Boolean);
+  if (!tracks.length) {
+    list.innerHTML = `<div class="dj-empty-set">Add analyzed tracks from the browser above, then drag to order.</div>`;
+    $("dj-set-summary").innerHTML = "";
+    if (typeof renderWheel === "function") renderWheel([]);
+    if (typeof renderEnergy === "function") renderEnergy([]);
+    return;
+  }
+  let ratings = [];
+  if (tracks.length > 1) {
+    try {
+      const r = await fetch("/api/dj/compatibility", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: djSet }),
+      });
+      if (r.ok) ratings = (await r.json()).ratings;
+    } catch { /* markers just don't render */ }
+  }
+  const bpms = tracks.map((t) => t.bpm).filter(Boolean);
+  const keys = [...new Set(tracks.map((t) => t.camelot).filter(Boolean))];
+  $("dj-set-summary").textContent =
+    `${tracks.length} tracks · ${Math.min(...bpms).toFixed(0)}–${Math.max(...bpms).toFixed(0)} BPM · keys: ${keys.join(" ")}`;
+  list.innerHTML = tracks.map((t, i) => {
+    const slot = `<div class="dj-slot" draggable="true" data-id="${t.id}">
+      <span class="n">${i + 1}</span>
+      <span class="dj-key" style="background:${camelotColor(t.camelot)};color:#fff">${t.camelot || "?"}</span>
+      <span class="t">${esc(t.title)} <small>· ${esc(t.artist)}</small></span>
+      <span class="num">${t.bpm ? t.bpm.toFixed(1) : ""}</span>
+      <button class="rm" data-id="${t.id}" title="Remove">×</button>
+    </div>`;
+    const link = i < tracks.length - 1 && ratings[i]
+      ? `<div class="dj-link ${ratings[i]}"><span class="line"></span><span class="why">${ratings[i]}</span></div>`
+      : "";
+    return slot + link;
+  }).join("");
+  if (typeof renderWheel === "function") renderWheel(tracks);
+  if (typeof renderEnergy === "function") renderEnergy(tracks);
+}
+
+/* drag to reorder */
+let dragId = null;
+$("dj-set-list").addEventListener("dragstart", (e) => {
+  const slot = e.target.closest(".dj-slot");
+  if (!slot) return;
+  dragId = slot.dataset.id;
+  slot.classList.add("dragging");
+});
+$("dj-set-list").addEventListener("dragend", (e) => {
+  e.target.closest(".dj-slot")?.classList.remove("dragging");
+  dragId = null;
+});
+$("dj-set-list").addEventListener("dragover", (e) => {
+  e.preventDefault();
+  const over = e.target.closest(".dj-slot");
+  if (!over || !dragId || over.dataset.id === dragId) return;
+  const from = djSet.indexOf(dragId);
+  const to = djSet.indexOf(over.dataset.id);
+  djSet.splice(from, 1);
+  djSet.splice(to, 0, dragId);
+  renderSet();
+});
+$("dj-set-list").addEventListener("click", (e) => {
+  const rm = e.target.closest(".rm");
+  if (rm) removeFromSet(rm.dataset.id);
+});
+
+/* save to rekordbox */
+$("dj-save").onclick = async () => {
+  const name = $("dj-set-name").value.trim();
+  const btn = $("dj-save");
+  if (!name || !djSet.length) {
+    btn.textContent = !name ? "Name the set first" : "Add tracks first";
+    setTimeout(() => { btn.textContent = "Save to rekordbox"; }, 2000);
+    return;
+  }
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    const r = await fetch("/api/dj/export", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, ids: djSet }),
+    });
+    const d = await r.json();
+    btn.textContent = r.ok ? `Saved as “${d.playlist}”` : (d.detail || "Failed");
+  } catch {
+    btn.textContent = "Failed";
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = "Save to rekordbox"; }, 3500);
+  }
+};
+renderSet();   // initial empty state
 
 /* ---- boot ---- */
 (async () => {
