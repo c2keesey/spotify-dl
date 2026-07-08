@@ -476,3 +476,23 @@ def test_download_never_reaches_real_auto_import(client, monkeypatch, tmp_path):
         time.sleep(0.01)
     assert job["status"] == "done"
     assert imported == []
+
+
+# ---- static serving (dist preferred, legacy fallback) ----
+
+def test_index_serves_dist_when_present(client, monkeypatch, tmp_path):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html>CRATE</html>")
+    (dist / "assets" / "app.js").write_text("console.log(1)")
+    monkeypatch.setattr(web, "DIST_DIR", dist)
+    r = client.get("/")
+    assert r.status_code == 200 and "CRATE" in r.text
+    r = client.get("/assets/app.js")
+    assert r.status_code == 200 and "console.log" in r.text
+
+
+def test_index_falls_back_to_legacy(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(web, "DIST_DIR", tmp_path / "nope")
+    r = client.get("/")
+    assert r.status_code == 200 and "spotify-dl" in r.text

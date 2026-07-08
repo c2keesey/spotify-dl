@@ -811,8 +811,22 @@ def auto_import(output):
     rekordbox.import_files(sorted(str(f) for f in p.rglob("*.mp3")))
 
 
+DIST_DIR = STATIC_DIR / "dist"
+
+
+@app.get("/assets/{path:path}")
+def dist_assets(path: str):
+    f = (DIST_DIR / "assets" / path).resolve()
+    if not str(f).startswith(str(DIST_DIR.resolve())) or not f.is_file():
+        raise HTTPException(404, "no such asset")
+    return FileResponse(f)
+
+
 @app.get("/")
 def index():
+    dist_index = DIST_DIR / "index.html"
+    if dist_index.is_file():
+        return FileResponse(dist_index)
     return FileResponse(STATIC_DIR / "index.html")
 
 
