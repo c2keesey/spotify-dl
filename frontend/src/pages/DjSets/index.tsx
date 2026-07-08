@@ -3,6 +3,8 @@ import { PanelHeader } from "@/components/PanelHeader";
 import { StatusStrip } from "./StatusStrip";
 import { TrackBrowser } from "./TrackBrowser";
 import { SetRail } from "./SetRail";
+import { CamelotWheel } from "./CamelotWheel";
+import { EnergyScope } from "./EnergyScope";
 import { useSetState } from "./useSetState";
 
 /**
@@ -15,6 +17,8 @@ export function DjSetsPage({ outdir }: { outdir: string }) {
   const set = useSetState();
   const [camelotFilter, setCamelotFilter] = useState("");
   const inSet = useMemo(() => new Set(set.setIds), [set.setIds]);
+  const toggleCamelot = (code: string) =>
+    setCamelotFilter((prev) => (prev === code ? "" : code));
 
   return (
     <div className="space-y-8">
@@ -48,6 +52,20 @@ export function DjSetsPage({ outdir }: { outdir: string }) {
             onRemove={set.remove}
             onReorder={set.reorder}
           />
+        </div>
+      </div>
+
+      <div
+        style={{ animationDelay: "220ms" }}
+        className="grid animate-[fadeUp_.4s_ease_both] grid-cols-1 items-start gap-8 lg:grid-cols-2"
+      >
+        <div className="space-y-3">
+          <PanelHeader>Key Wheel</PanelHeader>
+          <CamelotWheel tracks={set.tracks} onSegmentClick={toggleCamelot} />
+        </div>
+        <div className="space-y-3">
+          <PanelHeader>Energy Scope</PanelHeader>
+          <EnergyScope tracks={set.tracks} />
         </div>
       </div>
     </div>
