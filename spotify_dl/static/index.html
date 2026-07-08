@@ -1309,6 +1309,55 @@ $("dj-wheel").addEventListener("click", (e) => {
   refreshDJTracks();
 });
 
+/* ---- energy curve ---- */
+const energyCache = {};       // track id -> LUFS | null (session-level)
+
+async function renderEnergy(tracks) {
+  const box = $("dj-energy");
+  if (tracks.length < 2) {
+    box.innerHTML = `<div class="dj-empty-set">Energy curve appears with 2+ tracks.</div>`;
+    return;
+  }
+  const missing = tracks.filter((t) => !(t.id in energyCache)).map((t) => t.id);
+  if (missing.length) {
+    box.innerHTML = `<div class="dj-empty-set">Measuring energy… (first time per track)</div>`;
+    try {
+      const r = await fetch("/api/dj/energy", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: missing }),
+      });
+      if (r.ok) Object.assign(energyCache, (await r.json()).energy);
+      else missing.forEach((id) => { energyCache[id] = null; });
+    } catch { missing.forEach((id) => { energyCache[id] = null; }); }
+  }
+  const w = 420, h = 150, pad = 26;
+  const es = tracks.map((t) => energyCache[t.id]);
+  const known = es.filter((e) => e != null);
+  if (known.length < 2) {
+    box.innerHTML = `<div class="dj-empty-set">Not enough energy data for these files.</div>`;
+    return;
+  }
+  const lo = Math.min(...known) - 1, hi = Math.max(...known) + 1;
+  const bpms = tracks.map((t) => t.bpm).filter(Boolean);
+  const blo = Math.min(...bpms) - 2, bhi = Math.max(...bpms) + 2;
+  const x = (i) => pad + (i / (tracks.length - 1)) * (w - 2 * pad);
+  const yE = (e) => h - pad - ((e - lo) / (hi - lo)) * (h - 2 * pad);
+  const yB = (b) => h - pad - ((b - blo) / (bhi - blo)) * (h - 2 * pad);
+  const ePts = es.map((e, i) => e != null ? `${x(i)},${yE(e)}` : null).filter(Boolean).join(" ");
+  const bPts = tracks.map((t, i) => t.bpm ? `${x(i)},${yB(t.bpm)}` : null).filter(Boolean).join(" ");
+  const dots = es.map((e, i) => e != null
+    ? `<circle cx="${x(i)}" cy="${yE(e)}" r="3.5" fill="var(--accent)"><title>${esc(tracks[i].title)}: ${e.toFixed(1)} LUFS</title></circle>`
+    : "").join("");
+  box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%">
+    <polyline points="${bPts}" fill="none" stroke="var(--faint)" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <polygon points="${pad},${h - pad} ${ePts} ${x(tracks.length - 1)},${h - pad}" fill="var(--accent)" opacity="0.12"/>
+    <polyline points="${ePts}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    ${dots}
+    <text x="${pad}" y="12" font-size="10" fill="var(--dim)">energy (loudness)</text>
+    <text x="${w - pad}" y="12" font-size="10" fill="var(--faint)" text-anchor="end">- - BPM</text>
+  </svg>`;
+}
+
 /* ---- boot ---- */
 (async () => {
   const cfg = await (await fetch("/api/config")).json();
