@@ -213,3 +213,27 @@ def import_files(paths):
         finally:
             db.close()
     return {"imported": new, "skipped_duplicates": dupes}
+
+
+def export_playlist(name, track_ids):
+    """Write an ordered set as a NEW playlist. Existing playlists are never
+    modified; a name collision gets ' (2)', ' (3)', … appended."""
+    if not track_ids:
+        raise ValueError("empty set")
+    if is_rekordbox_running():
+        raise RekordboxRunning("close rekordbox first")
+    backup_master_db()
+    db = open_db()
+    try:
+        taken = {p.Name for p in db.get_playlist()}
+        final, n = name, 2
+        while final in taken:
+            final = f"{name} ({n})"
+            n += 1
+        pl = db.create_playlist(final)
+        for i, tid in enumerate(track_ids, 1):
+            db.add_to_playlist(pl, tid, track_no=i)
+        db.commit()
+        return {"playlist": final}
+    finally:
+        db.close()

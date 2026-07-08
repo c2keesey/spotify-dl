@@ -210,3 +210,68 @@ def test_import_dedups_within_batch(stub_writes):
     assert result["imported"] == ["/d/copy1.mp3"]
     assert len(result["skipped_duplicates"]) == 1
     assert [a[0] for a in fake.added] == ["/d/copy1.mp3"]
+
+
+# ---- export (always a NEW playlist) ----
+
+class FakePlaylist:
+    def __init__(self, name):
+        self.Name = name
+
+
+class FakeExportDB(FakeDB):
+    def __init__(self, existing_names=()):
+        super().__init__()
+        self.existing = [FakePlaylist(n) for n in existing_names]
+        self.created = []
+        self.playlist_adds = []
+
+    def get_playlist(self):
+        return self.existing
+
+    def create_playlist(self, name):
+        pl = FakePlaylist(name)
+        self.created.append(name)
+        return pl
+
+    def add_to_playlist(self, playlist, content, track_no=None):
+        self.playlist_adds.append((playlist.Name, content, track_no))
+
+
+@pytest.fixture
+def stub_export(monkeypatch):
+    def make(existing_names=()):
+        fake = FakeExportDB(existing_names)
+        monkeypatch.setattr(rb, "is_rekordbox_running", lambda: False)
+        monkeypatch.setattr(rb, "open_db", lambda: fake)
+        monkeypatch.setattr(rb, "backup_master_db", lambda: Path("/tmp/b.db"))
+        return fake
+    return make
+
+
+def test_export_creates_new_playlist_in_order(stub_export):
+    fake = stub_export()
+    result = rb.export_playlist("Friday Set", ["10", "20", "30"])
+    assert result == {"playlist": "Friday Set"}
+    assert fake.created == ["Friday Set"]
+    assert fake.playlist_adds == [
+        ("Friday Set", "10", 1), ("Friday Set", "20", 2), ("Friday Set", "30", 3)]
+    assert fake.committed
+
+
+def test_export_uniquifies_name_never_touches_existing(stub_export):
+    fake = stub_export(existing_names=["Friday Set", "Friday Set (2)"])
+    result = rb.export_playlist("Friday Set", ["10"])
+    assert result == {"playlist": "Friday Set (3)"}
+    assert fake.created == ["Friday Set (3)"]
+
+
+def test_export_refuses_while_running(monkeypatch):
+    monkeypatch.setattr(rb, "is_rekordbox_running", lambda: True)
+    with pytest.raises(rb.RekordboxRunning):
+        rb.export_playlist("X", ["1"])
+
+
+def test_export_rejects_empty(stub_export):
+    with pytest.raises(ValueError):
+        rb.export_playlist("X", [])
