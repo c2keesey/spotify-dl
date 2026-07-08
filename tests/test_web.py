@@ -496,3 +496,25 @@ def test_index_falls_back_to_legacy(client, monkeypatch, tmp_path):
     monkeypatch.setattr(web, "DIST_DIR", tmp_path / "nope")
     r = client.get("/")
     assert r.status_code == 200 and "spotify-dl" in r.text
+
+
+def test_assets_blocks_traversal(client, monkeypatch, tmp_path):
+    # httpx/TestClient normalizes ".." out of URLs before they reach the app,
+    # so call the handler directly — that's what a raw socket could deliver.
+    from fastapi import HTTPException
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("x")
+    sibling = tmp_path / "distractor"
+    sibling.mkdir()
+    (sibling / "secret.txt").write_text("TOP SECRET")
+    monkeypatch.setattr(web, "DIST_DIR", dist)
+    # sibling dir sharing the "dist" prefix — the startswith pitfall
+    with pytest.raises(HTTPException) as exc:
+        web.dist_assets("../../distractor/secret.txt")
+    assert exc.value.status_code == 404
+    # escaping assets/ but staying inside dist/
+    with pytest.raises(HTTPException) as exc:
+        web.dist_assets("../index.html")
+    assert exc.value.status_code == 404

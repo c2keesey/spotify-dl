@@ -817,7 +817,8 @@ DIST_DIR = STATIC_DIR / "dist"
 @app.get("/assets/{path:path}")
 def dist_assets(path: str):
     f = (DIST_DIR / "assets" / path).resolve()
-    if not str(f).startswith(str(DIST_DIR.resolve())) or not f.is_file():
+    assets_root = (DIST_DIR / "assets").resolve()
+    if not f.is_relative_to(assets_root) or not f.is_file():
         raise HTTPException(404, "no such asset")
     return FileResponse(f)
 
