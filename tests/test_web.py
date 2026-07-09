@@ -755,6 +755,159 @@ def test_download_never_reaches_real_auto_import(client, monkeypatch, tmp_path):
     assert imported == []
 
 
+# ---- dj: saved sets, resolution, mapping, playlists (Task 10) ----
+#
+# SETS_DIR is redirected to a tmp dir and load_tracks is stubbed, so nothing here
+# reads or writes the real filesystem sets/ or the real rekordbox master.db.
+
+@pytest.fixture
+def sets_client(monkeypatch, tmp_path):
+    monkeypatch.setattr(web, "SETS_DIR", tmp_path / "sets")
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", title="One", artist="A", file_path="/lib/a.mp3"),
+        DJTRACK(id="2", title="Two", artist="B", file_path="/lib/b.mp3"),
+        DJTRACK(id="3", title="Gone", file_path="/lib/gone.mp3", file_state="missing"),
+    ])
+    web._NOT_IMPORTED_CACHE.clear()
+    return TestClient(web.app)
+
+
+def test_dj_sets_list_and_save(sets_client):
+    sets_client.post("/api/dj/sets", json={"name": "Night", "ids": ["1", "2"]})
+    sets = sets_client.get("/api/dj/sets").json()["sets"]
+    assert len(sets) == 1
+    s = sets[0]
+    assert s["name"] == "Night" and s["stem"] == "Night"
+    assert s["track_count"] == 2 and s["exported"] is False
+
+
+def test_dj_save_set_empty_is_400(sets_client):
+    assert sets_client.post("/api/dj/sets", json={"name": "X", "ids": []}).status_code == 400
+    assert sets_client.post("/api/dj/sets", json={"name": " ", "ids": ["1"]}).status_code == 400
+
+
+def test_dj_open_set_resolves_id_first(sets_client):
+    sets_client.post("/api/dj/sets", json={"name": "Set", "ids": ["2", "1"]})
+    d = sets_client.get("/api/dj/sets/Set").json()
+    assert [t["id"] for t in d["tracks"]] == ["2", "1"]   # order preserved
+    assert d["path_resolved"] == [] and d["unresolved"] == []
+
+
+def test_dj_open_set_missing_file_track_still_resolves(sets_client):
+    sets_client.post("/api/dj/sets", json={"name": "Set", "ids": ["3"]})
+    d = sets_client.get("/api/dj/sets/Set").json()
+    assert [t["id"] for t in d["tracks"]] == ["3"]        # missing file resolves by id
+    assert d["unresolved"] == []
+
+
+def test_dj_open_set_path_fallback_when_id_changed(sets_client, monkeypatch):
+    sets_client.post("/api/dj/sets", json={"name": "Set", "ids": ["1"]})
+    # library rebuilt: same file path, new content id
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="NEW", file_path="/lib/a.mp3")])
+    d = sets_client.get("/api/dj/sets/Set").json()
+    assert [t["id"] for t in d["tracks"]] == ["NEW"]
+    assert d["path_resolved"] == [{"id": "1", "path": "/lib/a.mp3", "resolved_id": "NEW"}]
+    assert d["unresolved"] == []
+
+
+def test_dj_open_set_unresolvable_reported(sets_client, monkeypatch):
+    sets_client.post("/api/dj/sets", json={"name": "Set", "ids": ["1"]})
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="OTHER", file_path="/lib/other.mp3")])   # neither id nor path match
+    d = sets_client.get("/api/dj/sets/Set").json()
+    assert d["tracks"] == []
+    assert d["unresolved"] == [{"id": "1", "path": "/lib/a.mp3"}]
+
+
+def test_dj_open_set_404_for_missing(sets_client):
+    assert sets_client.get("/api/dj/sets/ghost").status_code == 404
+
+
+def test_dj_rename_set(sets_client):
+    sets_client.post("/api/dj/sets", json={"name": "Old", "ids": ["1"]})
+    r = sets_client.patch("/api/dj/sets/Old", json={"name": "New"})
+    assert r.status_code == 200 and r.json()["stem"] == "New"
+    names = {s["name"] for s in sets_client.get("/api/dj/sets").json()["sets"]}
+    assert names == {"New"}
+
+
+def test_dj_rename_missing_is_404(sets_client):
+    assert sets_client.patch("/api/dj/sets/ghost", json={"name": "X"}).status_code == 404
+
+
+def test_dj_duplicate_set(sets_client):
+    sets_client.post("/api/dj/sets", json={"name": "Src", "ids": ["1", "2"]})
+    r = sets_client.post("/api/dj/sets/Src/duplicate")
+    assert r.status_code == 200 and r.json()["stem"] != "Src"
+    assert len(sets_client.get("/api/dj/sets").json()["sets"]) == 2
+
+
+def test_dj_delete_set_removes_only_files_never_a_playlist(sets_client, monkeypatch):
+    sets_client.post("/api/dj/sets", json={"name": "Doomed", "ids": ["1"]})
+    # deleting a set must never reach any rekordbox write path
+    monkeypatch.setattr(web.rekordbox, "export_playlist",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("touched a playlist")))
+    monkeypatch.setattr(web.rekordbox, "backup_master_db",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("backed up db")))
+    assert sets_client.delete("/api/dj/sets/Doomed").json() == {"ok": True}
+    assert sets_client.get("/api/dj/sets").json()["sets"] == []
+    assert sets_client.delete("/api/dj/sets/Doomed").status_code == 404
+
+
+def test_dj_set_name_traversal_is_contained(sets_client, tmp_path):
+    """Every name-taking set endpoint neutralizes traversal — no file outside the
+    sets dir is created, read, renamed, or deleted."""
+    secret = tmp_path / "secret.txt"
+    secret.write_text("top secret")
+    # save with a traversal name lands inside sets/, never at the target
+    sets_client.post("/api/dj/sets", json={"name": "../../secret", "ids": ["1"]})
+    assert secret.read_text() == "top secret"
+    # delete/rename/duplicate with traversal stems never escape either
+    assert sets_client.delete("/api/dj/sets/..%2F..%2Fsecret").status_code in (404, 200)
+    assert secret.exists()
+    assert sets_client.patch("/api/dj/sets/..%2F..%2Fsecret.txt", json={"name": "x"}).status_code == 404
+    assert secret.read_text() == "top secret"
+
+
+def test_dj_export_records_mapping_for_a_saved_set(sets_client, monkeypatch):
+    save = sets_client.post("/api/dj/sets", json={"name": "Mapped", "ids": ["1"]}).json()
+    monkeypatch.setattr(web.rekordbox, "export_playlist",
+                        lambda name, ids: {"playlist": name, "playlist_id": "PL100"})
+    sets_client.post("/api/dj/export",
+                     json={"name": "Mapped", "ids": ["1"], "set": save["stem"]})
+    s = next(s for s in sets_client.get("/api/dj/sets").json()["sets"] if s["stem"] == save["stem"])
+    assert s["exported"] is True
+    assert s["rekordbox_playlist_id"] == "PL100"
+
+
+def test_dj_reexport_updates_mapping_to_new_playlist(sets_client, monkeypatch):
+    save = sets_client.post("/api/dj/sets", json={"name": "Re", "ids": ["1"]}).json()
+    seq = iter([{"playlist": "Re", "playlist_id": "PL1"},
+                {"playlist": "Re (2)", "playlist_id": "PL2"}])
+    monkeypatch.setattr(web.rekordbox, "export_playlist", lambda name, ids: next(seq))
+    sets_client.post("/api/dj/export", json={"name": "Re", "ids": ["1"], "set": save["stem"]})
+    sets_client.post("/api/dj/export", json={"name": "Re", "ids": ["1"], "set": save["stem"]})
+    s = next(s for s in sets_client.get("/api/dj/sets").json()["sets"] if s["stem"] == save["stem"])
+    assert s["rekordbox_playlist_id"] == "PL2"          # new playlist, mapping updated
+    assert s["rekordbox_playlist_name"] == "Re (2)"
+
+
+def test_dj_playlists_read_only(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: True)
+    monkeypatch.setattr(web.rekordbox, "read_playlists", lambda: [
+        {"id": "p1", "name": "Warmup", "track_count": 2, "track_ids": ["1", "2"]}])
+    d = client.get("/api/dj/playlists").json()
+    assert d["playlists"][0]["name"] == "Warmup"
+    assert d["playlists"][0]["track_ids"] == ["1", "2"]
+
+
+def test_dj_playlists_db_error_is_503(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "read_playlists",
+                        lambda: (_ for _ in ()).throw(RuntimeError("no db")))
+    assert client.get("/api/dj/playlists").status_code == 503
+
+
 # ---- static serving (dist required) ----
 
 def test_index_serves_dist_when_present(client, monkeypatch, tmp_path):

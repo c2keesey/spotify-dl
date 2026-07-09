@@ -298,3 +298,143 @@ def test_m3u8_label_cannot_inject_directives(tmp_path):
     lines = p.read_text(encoding="utf-8").strip().split("\n")
     assert lines == ["#EXTM3U", "#EXTINF:200,A B - Boom /etc/evil.mp3 #EXTINF:0,injected", "/lib/a.mp3"]
     assert [t["path"] for t in setfile.load(p)["tracks"]] == ["/lib/a.mp3"]
+
+
+# ---- list_sets: stem + exported flag (Task 10) ----
+
+def test_list_sets_reports_stem_and_exported(tmp_path):
+    setfile.save(tmp_path, "Alpha", [TRACK(id="1", file_path="/lib/a.mp3")])
+    b = setfile.save(tmp_path, "Beta", [TRACK(id="2", file_path="/lib/b.mp3")])
+    setfile.set_mapping(tmp_path, b.stem, "PL42", "Beta (rekordbox)")
+    by_name = {s["name"]: s for s in setfile.list_sets(tmp_path)}
+    assert by_name["Alpha"]["stem"] == "Alpha"
+    assert by_name["Alpha"]["exported"] is False
+    assert by_name["Beta"]["exported"] is True
+    assert by_name["Beta"]["rekordbox_playlist_id"] == "PL42"
+    assert by_name["Beta"]["rekordbox_playlist_name"] == "Beta (rekordbox)"
+
+
+# ---- rename ----
+
+def test_rename_moves_files_and_updates_name(tmp_path):
+    m = setfile.save(tmp_path, "Old", [TRACK(id="1", file_path="/lib/a.mp3")])
+    assert m.stem == "Old"
+    new = setfile.rename(tmp_path, "Old", "New Name")
+    assert new.stem == "New Name"
+    assert not (tmp_path / "Old.m3u8").exists()
+    assert not (tmp_path / "Old.json").exists()
+    assert setfile.load(new)["name"] == "New Name"
+    assert [t["id"] for t in setfile.load(new)["tracks"]] == ["1"]
+
+
+def test_rename_preserves_playlist_mapping(tmp_path):
+    m = setfile.save(tmp_path, "Old", [TRACK(id="1", file_path="/lib/a.mp3")])
+    setfile.set_mapping(tmp_path, m.stem, "PL9", "Old (rb)")
+    new = setfile.rename(tmp_path, "Old", "Fresh")
+    assert setfile.load(new)["rekordbox_playlist_id"] == "PL9"
+
+
+def test_rename_missing_set_returns_none(tmp_path):
+    assert setfile.rename(tmp_path, "ghost", "x") is None
+
+
+def test_rename_does_not_clobber_a_different_set(tmp_path):
+    setfile.save(tmp_path, "Keep", [TRACK(id="1", file_path="/lib/a.mp3")])
+    setfile.save(tmp_path, "Move", [TRACK(id="2", file_path="/lib/b.mp3")])
+    new = setfile.rename(tmp_path, "Move", "Keep")  # collides with an existing set
+    assert new.stem != "Keep"                       # uniquified, not overwritten
+    assert [t["id"] for t in setfile.load(tmp_path / "Keep.m3u8")["tracks"]] == ["1"]
+
+
+# ---- duplicate ----
+
+def test_duplicate_creates_independent_copy(tmp_path):
+    setfile.save(tmp_path, "Source", [TRACK(id="1", file_path="/lib/a.mp3"),
+                                      TRACK(id="2", file_path="/lib/b.mp3")])
+    dup = setfile.duplicate(tmp_path, "Source")
+    assert dup.stem != "Source"
+    assert (tmp_path / "Source.m3u8").exists()       # original untouched
+    assert [t["id"] for t in setfile.load(dup)["tracks"]] == ["1", "2"]
+
+
+def test_duplicate_resets_playlist_mapping(tmp_path):
+    m = setfile.save(tmp_path, "Src", [TRACK(id="1", file_path="/lib/a.mp3")])
+    setfile.set_mapping(tmp_path, m.stem, "PL1", "Src (rb)")
+    dup = setfile.duplicate(tmp_path, "Src")
+    assert setfile.load(dup)["rekordbox_playlist_id"] is None
+
+
+def test_duplicate_missing_returns_none(tmp_path):
+    assert setfile.duplicate(tmp_path, "ghost") is None
+
+
+# ---- delete ----
+
+def test_delete_removes_only_set_files(tmp_path):
+    setfile.save(tmp_path, "Gone", [TRACK(id="1", file_path="/lib/a.mp3")])
+    keep = tmp_path / "OtherSet.m3u8"
+    keep.write_text("#EXTM3U\n", encoding="utf-8")
+    assert setfile.delete(tmp_path, "Gone") is True
+    assert not (tmp_path / "Gone.m3u8").exists()
+    assert not (tmp_path / "Gone.json").exists()
+    assert keep.exists()                             # a different set survives
+
+
+def test_delete_missing_returns_false(tmp_path):
+    assert setfile.delete(tmp_path, "ghost") is False
+
+
+def test_delete_traversal_name_is_contained(tmp_path):
+    victim = tmp_path.parent / "victim.m3u8"
+    victim.write_text("secret", encoding="utf-8")
+    try:
+        assert setfile.delete(tmp_path, "../victim") is False
+        assert victim.exists()                       # never escaped the sets dir
+    finally:
+        victim.unlink(missing_ok=True)
+
+
+# ---- resolution: id-first, path fallback, report the rest ----
+
+def _by(records):
+    by_id = {r["id"]: r for r in records}
+    by_path = {r["file_path"]: r for r in records if r["file_path"]}
+    return by_id, by_path
+
+
+def test_resolve_id_first(tmp_path):
+    live = [TRACK(id="1", file_path="/lib/moved.mp3")]
+    by_id, by_path = _by(live)
+    tracks, path_res, unresolved = setfile.resolve_entries(
+        [{"id": "1", "path": "/lib/OLD.mp3"}], by_id, by_path)
+    assert [t["id"] for t in tracks] == ["1"]        # id wins over the stale path
+    assert path_res == [] and unresolved == []
+
+
+def test_resolve_path_fallback_when_id_changed(tmp_path):
+    # the content id changed (library rebuild) but the file path is unchanged
+    live = [TRACK(id="NEW", file_path="/lib/a.mp3")]
+    by_id, by_path = _by(live)
+    tracks, path_res, unresolved = setfile.resolve_entries(
+        [{"id": "OLD", "path": "/lib/a.mp3"}], by_id, by_path)
+    assert [t["id"] for t in tracks] == ["NEW"]
+    assert path_res == [{"id": "OLD", "path": "/lib/a.mp3", "resolved_id": "NEW"}]
+    assert unresolved == []
+
+
+def test_resolve_unresolvable_is_reported(tmp_path):
+    by_id, by_path = _by([TRACK(id="1", file_path="/lib/a.mp3")])
+    tracks, path_res, unresolved = setfile.resolve_entries(
+        [{"id": "9", "path": "/lib/vanished.mp3"}], by_id, by_path)
+    assert tracks == [] and path_res == []
+    assert unresolved == [{"id": "9", "path": "/lib/vanished.mp3"}]
+
+
+def test_resolve_missing_file_track_still_resolves(tmp_path):
+    # a track whose file is gone from disk still has a DB record => resolves by id
+    live = [TRACK(id="1", file_path="/lib/gone.mp3", file_state="missing")]
+    by_id, by_path = _by(live)
+    tracks, path_res, unresolved = setfile.resolve_entries(
+        [{"id": "1", "path": "/lib/gone.mp3"}], by_id, by_path)
+    assert [t["id"] for t in tracks] == ["1"]
+    assert unresolved == []

@@ -96,6 +96,20 @@ def _claim_stem(d, stem, name):
             pass  # unreadable or absent sidecar — treat as someone else's file
 
 
+def _claim_new_stem(d, base_stem, skip=None):
+    """A stem used by no set other than `skip` (a Path allowed to be reused, e.g.
+    a rename in place). Unlike _claim_stem this NEVER overwrites a same-named set,
+    so rename/duplicate can't destroy a distinct existing set that shares a name."""
+    for n in itertools.count(1):
+        candidate = base_stem if n == 1 else f"{base_stem} ({n})"
+        m3u8_path = d / f"{candidate}.m3u8"
+        json_path = d / f"{candidate}.json"
+        if m3u8_path == skip:
+            return candidate
+        if not m3u8_path.exists() and not json_path.exists():
+            return candidate
+
+
 def save(dir, name, tracks):
     """Write <name>.m3u8 (the portable artifact) and <name>.json (Crate state)
     into `dir`, in set order. Returns the m3u8 Path."""
@@ -115,9 +129,137 @@ def save(dir, name, tracks):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "tracks": [{"id": t.get("id"), "path": _track_path(t)} for t in tracks],
         "rekordbox_playlist_id": None,
+        "rekordbox_playlist_name": None,
     }
     json_path.write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
     return m3u8_path
+
+
+def _paths_for(dir, stem):
+    """The (m3u8, json) Paths for a set addressed by its filename stem, guaranteed
+    to sit directly inside `dir`. `stem` is re-sanitized because it arrives back
+    as a URL path segment: a hostile '../../etc/passwd' must never escape."""
+    d = Path(dir)
+    safe = _safe_name(stem)
+    m3u8_path = d / f"{safe}.m3u8"
+    json_path = d / f"{safe}.json"
+    root = d.resolve()
+    if m3u8_path.resolve().parent != root or json_path.resolve().parent != root:
+        raise ValueError("unsafe set name")
+    return m3u8_path, json_path
+
+
+def find(dir, stem):
+    """The m3u8 Path for a set addressed by its stem, or None if there is none.
+    The stem is the stable on-disk id that list_sets reports."""
+    try:
+        m3u8_path, _ = _paths_for(dir, stem)
+    except ValueError:
+        return None
+    return m3u8_path if m3u8_path.is_file() else None
+
+
+def set_mapping(dir, stem, playlist_id, playlist_name=None):
+    """Record which rekordbox playlist an export of this set produced. Re-export
+    overwrites the mapping (it made a NEW playlist); the previous playlist's rows
+    are never touched here."""
+    try:
+        _, json_path = _paths_for(dir, stem)
+    except ValueError:
+        return None
+    if not json_path.is_file():
+        return None
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["rekordbox_playlist_id"] = playlist_id
+    data["rekordbox_playlist_name"] = playlist_name
+    json_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return json_path
+
+
+def rename(dir, stem, new_name):
+    """Rename a set: display name and on-disk stem both change; any export mapping
+    is preserved (renaming the Crate set doesn't alter what was exported).
+    Uniquifies against a DIFFERENT existing set — never clobbers it. None if the
+    set does not exist."""
+    d = Path(dir)
+    old_m3u8 = find(d, stem)
+    if old_m3u8 is None:
+        return None
+    _, old_json = _paths_for(d, stem)
+    data = load(old_m3u8)
+    data["name"] = new_name
+    new_stem = _claim_new_stem(d, _safe_name(new_name), skip=old_m3u8)
+    new_m3u8, new_json = _paths_for(d, new_stem)
+    new_m3u8.write_text(old_m3u8.read_text(encoding="utf-8"), encoding="utf-8")
+    new_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    if new_m3u8 != old_m3u8:
+        old_m3u8.unlink(missing_ok=True)
+        old_json.unlink(missing_ok=True)
+    return new_m3u8
+
+
+def duplicate(dir, stem, new_name=None):
+    """Copy a set to a NEW, uniquified set. The copy is unexported — its mapping
+    resets to None so it isn't shown as tied to a playlist the original produced.
+    None if the source set does not exist."""
+    d = Path(dir)
+    src_m3u8 = find(d, stem)
+    if src_m3u8 is None:
+        return None
+    data = load(src_m3u8)
+    base_name = new_name or f"{data.get('name') or stem} copy"
+    new_stem = _claim_new_stem(d, _safe_name(base_name))
+    new_m3u8, new_json = _paths_for(d, new_stem)
+    sidecar = {
+        "name": base_name,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "tracks": data.get("tracks", []),
+        "rekordbox_playlist_id": None,
+        "rekordbox_playlist_name": None,
+    }
+    new_m3u8.write_text(src_m3u8.read_text(encoding="utf-8"), encoding="utf-8")
+    new_json.write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
+    return new_m3u8
+
+
+def delete(dir, stem):
+    """Delete ONLY this Crate set's own files (.m3u8 + .json). Never a rekordbox
+    playlist, never an audio file. Returns whether anything was removed."""
+    try:
+        m3u8_path, json_path = _paths_for(dir, stem)
+    except ValueError:
+        return False
+    existed = m3u8_path.is_file() or json_path.is_file()
+    m3u8_path.unlink(missing_ok=True)
+    json_path.unlink(missing_ok=True)
+    return existed
+
+
+def resolve_entries(entries, by_id, by_path):
+    """Resolve stored {id, path} entries against the live collection, content id
+    FIRST then absolute path. Returns (tracks, path_resolved, unresolved):
+
+    - tracks: the resolved live records, in order (an id change is followed);
+    - path_resolved: entries that matched only by path — the content id changed
+      (a rebuilt rekordbox library) — each carrying the new resolved id;
+    - unresolved: entries that matched neither, reported so a short set is never
+      presented silently.
+
+    A track whose FILE is missing still resolves: resolution is against the DB
+    records, not the disk, so a moved file stays in the set."""
+    tracks, path_resolved, unresolved = [], [], []
+    for e in entries:
+        eid = e.get("id")
+        path = e.get("path") or ""
+        if eid is not None and eid in by_id:
+            tracks.append(by_id[eid])
+        elif path and path in by_path:
+            rec = by_path[path]
+            tracks.append(rec)
+            path_resolved.append({"id": eid, "path": path, "resolved_id": rec["id"]})
+        else:
+            unresolved.append({"id": eid, "path": path})
+    return tracks, path_resolved, unresolved
 
 
 def _parse_m3u8(p):
@@ -164,11 +306,15 @@ def list_sets(dir):
     out = []
     for m3u8 in sorted(d.glob("*.m3u8")):
         data = load(m3u8)
+        pid = data.get("rekordbox_playlist_id")
         out.append({"name": data.get("name") or m3u8.stem,
+                    "stem": m3u8.stem,
                     "path": str(m3u8),
                     "created_at": data.get("created_at"),
                     "track_count": len(data.get("tracks", [])),
-                    "rekordbox_playlist_id": data.get("rekordbox_playlist_id")})
+                    "rekordbox_playlist_id": pid,
+                    "rekordbox_playlist_name": data.get("rekordbox_playlist_name"),
+                    "exported": pid is not None})
     return out
 
 

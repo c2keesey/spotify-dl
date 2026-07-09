@@ -451,8 +451,10 @@ def test_import_dedups_within_batch(stub_writes):
 # ---- export (always a NEW playlist) ----
 
 class FakePlaylist:
-    def __init__(self, name):
+    def __init__(self, name, id=None, attribute=0):
         self.Name = name
+        self.ID = id if id is not None else name
+        self.Attribute = attribute
 
 
 class FakeExportDB(FakeDB):
@@ -491,7 +493,7 @@ def stub_export(monkeypatch):
 def test_export_creates_new_playlist_in_order(stub_export):
     fake = stub_export()
     result = rb.export_playlist("Friday Set", ["10", "20", "30"])
-    assert result == {"playlist": "Friday Set"}
+    assert result == {"playlist": "Friday Set", "playlist_id": "Friday Set"}
     assert fake.created == ["Friday Set"]
     assert fake.playlist_adds == [
         ("Friday Set", "10", 1), ("Friday Set", "20", 2), ("Friday Set", "30", 3)]
@@ -501,8 +503,34 @@ def test_export_creates_new_playlist_in_order(stub_export):
 def test_export_uniquifies_name_never_touches_existing(stub_export):
     fake = stub_export(existing_names=["Friday Set", "Friday Set (2)"])
     result = rb.export_playlist("Friday Set", ["10"])
-    assert result == {"playlist": "Friday Set (3)"}
+    assert result == {"playlist": "Friday Set (3)", "playlist_id": "Friday Set (3)"}
     assert fake.created == ["Friday Set (3)"]
+
+
+# ---- read existing playlists (read-only; works while rekordbox runs) ----
+
+def test_build_playlists_orders_members_and_counts():
+    pls = [FakePlaylist("Warmup", id="p1"), FakePlaylist("Peak", id="p2")]
+    rows = [("p1", "c3", 2), ("p1", "c1", 1), ("p2", "c9", 1)]  # deliberately unordered
+    out = rb._build_playlists(pls, rows)
+    warmup = next(p for p in out if p["id"] == "p1")
+    assert warmup["name"] == "Warmup"
+    assert warmup["track_ids"] == ["c1", "c3"]      # ordered by TrackNo
+    assert warmup["track_count"] == 2
+    peak = next(p for p in out if p["id"] == "p2")
+    assert peak["track_ids"] == ["c9"]
+
+
+def test_build_playlists_skips_folders():
+    pls = [FakePlaylist("Real", id="p1", attribute=0),
+           FakePlaylist("A Folder", id="p2", attribute=1)]
+    out = rb._build_playlists(pls, [("p1", "c1", 1)])
+    assert [p["id"] for p in out] == ["p1"]
+
+
+def test_build_playlists_empty_playlist_has_zero_tracks():
+    out = rb._build_playlists([FakePlaylist("Empty", id="p1")], [])
+    assert out[0]["track_count"] == 0 and out[0]["track_ids"] == []
 
 
 def test_export_refuses_while_running(monkeypatch):

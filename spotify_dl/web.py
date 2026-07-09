@@ -824,6 +824,16 @@ class DJIdsRequest(BaseModel):
 class DJExportRequest(BaseModel):
     name: str
     ids: list[str]
+    set: str | None = None    # stem of the saved set this export maps to (optional)
+
+
+class SetSaveRequest(BaseModel):
+    name: str
+    ids: list[str]
+
+
+class SetRenameRequest(BaseModel):
+    name: str
 
 
 @app.post("/api/dj/import")
@@ -868,16 +878,115 @@ def dj_energy(req: DJIdsRequest):
 
 @app.post("/api/dj/export")
 def dj_export(req: DJExportRequest):
-    """Save the ordered set as a NEW rekordbox playlist (never overwrites)."""
+    """Save the ordered set as a NEW rekordbox playlist (never overwrites). When
+    `set` names a saved Crate set, record which playlist this export produced in
+    that set's sidecar so the UI can show 'exported'. Re-export makes a NEW
+    uniquified playlist and updates the mapping — the old playlist is untouched."""
     name = req.name.strip()
     if not name or not req.ids:
         raise HTTPException(400, "need a set name and at least one track")
     try:
-        return rekordbox.export_playlist(name, req.ids)
+        result = rekordbox.export_playlist(name, req.ids)
     except rekordbox.RekordboxRunning:
         raise HTTPException(409, "close rekordbox first")
     except ValueError as e:
         raise HTTPException(400, str(e))
+    if req.set:
+        try:
+            setfile.set_mapping(SETS_DIR, req.set,
+                                result.get("playlist_id"), result.get("playlist"))
+        except Exception:  # noqa: BLE001 - mapping is best-effort; the export already succeeded
+            pass
+    return result
+
+
+# ---- saved sets (Crate's own files; no master.db, works while rekordbox runs) ----
+
+@app.get("/api/dj/sets")
+def dj_sets():
+    """List saved Crate sets. Touches only Crate's own files, so it works while
+    rekordbox is running."""
+    return {"sets": setfile.list_sets(SETS_DIR)}
+
+
+@app.get("/api/dj/sets/{stem}")
+def dj_open_set(stem: str):
+    """Open a saved set: resolve each stored {id, path} against the live
+    collection, content id FIRST then absolute path. Missing-file tracks still
+    resolve (by id). Entries that matched only by path (id changed) or matched
+    nothing are reported explicitly so a short set is never presented silently."""
+    m3u8 = setfile.find(SETS_DIR, stem)
+    if m3u8 is None:
+        raise HTTPException(404, "no such set")
+    data = setfile.load(m3u8)
+    tracks = _dj_tracks_or_503()
+    by_id = {t["id"]: t for t in tracks}
+    by_path = {t["file_path"]: t for t in tracks if t["file_path"]}
+    resolved, path_resolved, unresolved = setfile.resolve_entries(
+        data.get("tracks", []), by_id, by_path)
+    return {
+        "name": data.get("name") or m3u8.stem,
+        "stem": m3u8.stem,
+        "tracks": resolved,
+        "path_resolved": path_resolved,
+        "unresolved": unresolved,
+        "rekordbox_playlist_id": data.get("rekordbox_playlist_id"),
+        "rekordbox_playlist_name": data.get("rekordbox_playlist_name"),
+    }
+
+
+@app.post("/api/dj/sets")
+def dj_save_set(req: SetSaveRequest):
+    """Save the ordered set as an m3u8 + JSON sidecar under sets/ (create, or
+    update in place when the name matches). No master.db write, no rekordbox
+    guard — works while rekordbox is open."""
+    name = req.name.strip()
+    if not name or not req.ids:
+        raise HTTPException(400, "need a set name and at least one track")
+    tracks = _resolve_ids_or_400(req.ids)
+    m3u8 = setfile.save(SETS_DIR, name, tracks)
+    return {"name": name, "stem": m3u8.stem, "path": str(m3u8)}
+
+
+@app.patch("/api/dj/sets/{stem}")
+def dj_rename_set(stem: str, req: SetRenameRequest):
+    """Rename a saved set (its export mapping is preserved). Never clobbers a
+    different existing set — a name collision uniquifies."""
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(400, "need a new name")
+    m3u8 = setfile.rename(SETS_DIR, stem, name)
+    if m3u8 is None:
+        raise HTTPException(404, "no such set")
+    return {"name": name, "stem": m3u8.stem, "path": str(m3u8)}
+
+
+@app.post("/api/dj/sets/{stem}/duplicate")
+def dj_duplicate_set(stem: str):
+    """Copy a saved set to a new (unexported) set."""
+    m3u8 = setfile.duplicate(SETS_DIR, stem)
+    if m3u8 is None:
+        raise HTTPException(404, "no such set")
+    return {"name": setfile.load(m3u8).get("name"), "stem": m3u8.stem, "path": str(m3u8)}
+
+
+@app.delete("/api/dj/sets/{stem}")
+def dj_delete_set(stem: str):
+    """Delete ONLY the Crate set's files (.m3u8 + .json). Never a rekordbox
+    playlist, never an audio file."""
+    if not setfile.delete(SETS_DIR, stem):
+        raise HTTPException(404, "no such set")
+    return {"ok": True}
+
+
+@app.get("/api/dj/playlists")
+def dj_playlists():
+    """Existing rekordbox playlists as READ-ONLY sets to fork into a new Crate
+    set. Read-only, zero write risk — works while rekordbox is running."""
+    try:
+        return {"playlists": rekordbox.read_playlists()}
+    except Exception as e:  # noqa: BLE001 - surface db problems as service-unavailable
+        raise HTTPException(503, f"couldn't read rekordbox playlists: {e}")
 
 
 def _resolve_ids_or_400(ids):

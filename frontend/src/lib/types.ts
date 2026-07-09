@@ -25,3 +25,14 @@ export type DupeReason = "exact_path" | "fuzzy";
 export type DupeCompared = { file_path?: string; artist?: string; title?: string; norm_title?: string; duration?: number | null };
 export type DupeGroup = { reason: DupeReason; compared: DupeCompared; tracks: DjTrack[] };
 export type DuplicatesResult = { groups: DupeGroup[]; exact_count: number; fuzzy_count: number };
+/** A saved Crate set on disk. `stem` is the stable on-disk id every set endpoint
+ *  addresses; `exported` is true once an export mapped it to a rekordbox playlist. */
+export type SetSummary = { name: string; stem: string; path: string; created_at: string | null; track_count: number; rekordbox_playlist_id: string | null; rekordbox_playlist_name: string | null; exported: boolean };
+/** A stored entry the live collection couldn't fully match. `resolved_id` is the
+ *  new id when the entry matched only by path (the content id changed). */
+export type ResolvedEntry = { id: string | null; path: string; resolved_id?: string };
+/** The result of opening a saved set: resolved tracks in order, plus the entries
+ *  that resolved by path only or not at all (surfaced, never silently dropped). */
+export type OpenSet = { name: string; stem: string; tracks: DjTrack[]; path_resolved: ResolvedEntry[]; unresolved: ResolvedEntry[]; rekordbox_playlist_id: string | null; rekordbox_playlist_name: string | null };
+/** An existing rekordbox playlist read in as a read-only set the user can fork. */
+export type RekordboxPlaylist = { id: string; name: string; track_count: number; track_ids: string[] };

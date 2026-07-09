@@ -88,6 +88,15 @@ function clear() {
   clearStored();
 }
 
+/** Replace the working set with a saved set (or a forked playlist) opened into
+ *  the rail. Undoable like any other mutation; the cache absorbs the incoming
+ *  records so they stay resolvable even after the browser filters their rows. */
+function openSet(tracks: DjTrack[]) {
+  const cache = { ...store.cache };
+  for (const t of tracks) cache[t.id] = t;
+  commit({ setIds: tracks.map((t) => t.id), cache }, true);
+}
+
 /** Undo touches membership/order only — never an export or a library import. */
 function undo() {
   if (store.past.length === 0) return;
@@ -158,6 +167,7 @@ export function useSetState() {
     remove,
     reorder,
     clear,
+    openSet,
     undo,
     canUndo: s.past.length > 0,
   };

@@ -245,6 +245,42 @@ def _record(c):
     }
 
 
+def _build_playlists(playlists, rows):
+    """Pure: assemble read-only playlist summaries from raw playlist objects
+    (each with .ID, .Name, .Attribute) and (playlist_id, content_id, track_no)
+    membership rows. Members are ordered by track_no; folders and smart playlists
+    (Attribute != 0) are skipped — they aren't ordered track lists to fork."""
+    members = {}
+    for pid, cid, no in sorted(rows, key=lambda r: (str(r[0]), r[2] if r[2] is not None else 0)):
+        members.setdefault(str(pid), []).append(str(cid))
+    out = []
+    for p in playlists:
+        if getattr(p, "Attribute", 0) not in (0, None):
+            continue
+        pid = str(p.ID)
+        ids = members.get(pid, [])
+        out.append({"id": pid, "name": p.Name or "",
+                    "track_count": len(ids), "track_ids": ids})
+    return out
+
+
+def read_playlists():
+    """Existing rekordbox playlists as READ-ONLY set summaries the user can fork
+    into a new Crate set. Read-only: opens the DB, walks membership, closes — no
+    write, no backup, no running-gate, so it works while rekordbox is open."""
+    from pyrekordbox.db6 import tables
+    db = open_db()
+    try:
+        rows = db.session.query(
+            tables.DjmdSongPlaylist.PlaylistID,
+            tables.DjmdSongPlaylist.ContentID,
+            tables.DjmdSongPlaylist.TrackNo,
+        ).all()
+        return _build_playlists(list(db.get_playlist()), rows)
+    finally:
+        db.close()
+
+
 def _playlist_names(db):
     """content id -> [playlist names]."""
     from pyrekordbox.db6 import tables
@@ -393,6 +429,6 @@ def export_playlist(name, track_ids):
             db.add_to_playlist(pl, tid, track_no=i)
         db.commit()
         invalidate_tracks_cache()
-        return {"playlist": final}
+        return {"playlist": final, "playlist_id": str(getattr(pl, "ID", final))}
     finally:
         db.close()

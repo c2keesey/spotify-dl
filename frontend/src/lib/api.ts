@@ -1,4 +1,4 @@
-import type { AppConfig, BrowseResult, Cron, DjStatus, DjTrack, DuplicatesResult, EnergyResult, FileState, ImportResult, Job, Library, LinkMeta, Rating } from "./types";
+import type { AppConfig, BrowseResult, Cron, DjStatus, DjTrack, DuplicatesResult, EnergyResult, FileState, ImportResult, Job, Library, LinkMeta, OpenSet, Rating, RekordboxPlaylist, SetSummary } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -55,6 +55,14 @@ export const api = {
   djEnergy: (ids: string[]) => req<EnergyResult>("/api/dj/energy", post({ ids })),
   djExport: (name: string, ids: string[]) => req<{ playlist: string }>("/api/dj/export", post({ name, ids })),
   djDuplicates: () => req<DuplicatesResult>("/api/dj/duplicates"),
+  // ---- saved sets (Crate's own files; safe while rekordbox is open) ----
+  djSets: () => req<{ sets: SetSummary[] }>("/api/dj/sets").then((r) => r.sets),
+  djOpenSet: (stem: string) => req<OpenSet>(`/api/dj/sets/${encodeURIComponent(stem)}`),
+  djSaveSet: (name: string, ids: string[]) => req<{ stem: string }>("/api/dj/sets", post({ name, ids })),
+  djRenameSet: (stem: string, name: string) => req<{ stem: string }>(`/api/dj/sets/${encodeURIComponent(stem)}`, { ...post({ name }), method: "PATCH" }),
+  djDuplicateSet: (stem: string) => req<{ stem: string }>(`/api/dj/sets/${encodeURIComponent(stem)}/duplicate`, { method: "POST" }),
+  djDeleteSet: (stem: string) => req<unknown>(`/api/dj/sets/${encodeURIComponent(stem)}`, { method: "DELETE" }).then(() => undefined),
+  djPlaylists: () => req<{ playlists: RekordboxPlaylist[] }>("/api/dj/playlists").then((r) => r.playlists),
   /** URL the <audio> element streams from. The id is a rekordbox content id;
    *  the server resolves it to a file — a path is never sent from the client. */
   djAudioUrl: (id: string) => `/api/dj/audio/${encodeURIComponent(id)}`,
