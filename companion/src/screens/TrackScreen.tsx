@@ -109,7 +109,11 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
     // snapshot goes stale and this write-through would clobber it — re-read
     // db.getCues here before merging in that case.
     allCuesRef.current = { ...allCuesRef.current, [trackId]: cuesRef.current };
-    void db.putCues(stem, allCuesRef.current);
+    // Cues are the only irreplaceable data — a failed write must not be silent.
+    db.putCues(stem, allCuesRef.current).catch(() => {
+      dirtyRef.current = true;
+      toast.error("Couldn't save cues — storage write failed. Retrying on next edit.");
+    });
   }, [stem, trackId]);
 
   const schedulePersist = useCallback(() => {
@@ -286,7 +290,7 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
                   onChange={(e) => setRenameValue(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && onSaveRename(menuCue.num)}
                 />
-                <Button variant="secondary" className="press shrink-0" onClick={() => onSaveRename(menuCue.num)}>
+                <Button variant="secondary" size="lg" className="press shrink-0" onClick={() => onSaveRename(menuCue.num)}>
                   Save
                 </Button>
               </div>

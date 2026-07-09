@@ -31,7 +31,13 @@ export async function deleteAudioFile(stem: string, name: string): Promise<void>
 export async function deleteSetAudio(stem: string): Promise<void> {
   const root = await navigator.storage.getDirectory();
   const sets = await root.getDirectoryHandle("sets", { create: true });
-  await sets.removeEntry(stem, { recursive: true });
+  try {
+    await sets.removeEntry(stem, { recursive: true });
+  } catch (e) {
+    // Already gone (e.g. iOS evicted OPFS) — deleting a set must still be
+    // able to clear its IDB rows, so absence is success here.
+    if (!(e instanceof DOMException && e.name === "NotFoundError")) throw e;
+  }
 }
 
 export async function storageEstimate(): Promise<{ usage: number; quota: number }> {
