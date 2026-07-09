@@ -229,10 +229,10 @@ export default function ImportScreen({ onOpenSet }: { onOpenSet: (stem: string) 
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>
+            <Button size="lg" variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>
               Cancel
             </Button>
-            <Button variant="destructive" disabled={deleting} onClick={confirmDelete}>
+            <Button size="lg" variant="destructive" disabled={deleting} onClick={confirmDelete}>
               {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
               Delete set
             </Button>

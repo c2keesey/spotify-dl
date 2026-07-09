@@ -2,7 +2,7 @@ import { Unzip, UnzipInflate } from "fflate";
 import type { Manifest, StoredSet } from "@/lib/types";
 import { parseManifest } from "@/lib/manifest";
 import { db } from "@/lib/idb";
-import { writeAudio, deleteSetAudio } from "@/lib/opfs";
+import { writeAudio, deleteAudioFile } from "@/lib/opfs";
 
 const MANIFEST_ENTRY = "manifest.json";
 
@@ -71,12 +71,17 @@ function isQuotaError(e: unknown): boolean {
 }
 
 /**
- * Pass 1 — stream the whole file but only decode + buffer `manifest.json`
- * (Crate writes it last, so we must read to the end). Audio/peaks entries are
- * never `start()`ed, so fflate skips their bytes without buffering. Validates
- * with parseManifest before returning. Throws a user-readable Error.
+ * Pass 1 — stream the file looking only for `manifest.json`, which Crate now
+ * writes FIRST, so the scan stops after the file prefix. Every entry is
+ * `start()`ed: fflate accumulates un-started entries in its chunk list forever,
+ * so starting each one (and discarding all but the manifest's bytes) keeps
+ * memory flat even for a manifest-last bundle. Validates with parseManifest
+ * before returning. Throws a user-readable Error.
  */
-async function readManifest(file: File): Promise<Manifest> {
+async function readManifest(
+  file: File,
+  onProgress: (done: number, total: number, label: string) => void,
+): Promise<Manifest> {
   const chunks: Uint8Array[] = [];
   let total = 0;
   let complete = false;
@@ -85,27 +90,35 @@ async function readManifest(file: File): Promise<Manifest> {
   const unzip = new Unzip();
   unzip.register(UnzipInflate);
   unzip.onfile = (f) => {
-    if (f.name !== MANIFEST_ENTRY) return; // skip: not started → bytes discarded
+    const isManifest = f.name === MANIFEST_ENTRY;
     f.ondata = (err, chunk, final) => {
       if (err) {
         failure = err;
         return;
       }
-      if (chunk && chunk.length) {
-        chunks.push(chunk);
-        total += chunk.length;
+      // Only the manifest's bytes are kept; every other entry is started and
+      // its chunks dropped so fflate frees them instead of buffering the zip.
+      if (isManifest) {
+        if (chunk && chunk.length) {
+          chunks.push(chunk);
+          total += chunk.length;
+        }
+        if (final) complete = true;
       }
-      if (final) complete = true;
     };
-    f.start();
+    f.start(); // start ALL entries so their bytes are discarded, not retained
   };
 
   const reader = file.stream().getReader();
+  let bytesRead = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (value && value.length) unzip.push(value, !!done);
-      else if (done) unzip.push(new Uint8Array(0), true);
+      if (value && value.length) {
+        bytesRead += value.length;
+        unzip.push(value, !!done);
+        onProgress(bytesRead, file.size, "Reading manifest…");
+      } else if (done) unzip.push(new Uint8Array(0), true);
       if (failure) throw failure;
       if (complete) break; // manifest fully read — stop early, no need to read on
       if (done) break;
@@ -133,6 +146,7 @@ async function readManifest(file: File): Promise<Manifest> {
 async function writeEntries(
   file: File,
   manifest: Manifest,
+  writtenAudio: string[],
   writtenPeaks: string[],
   onProgress: (done: number, total: number, label: string) => void,
 ): Promise<Set<string>> {
@@ -170,6 +184,7 @@ async function writeEntries(
       const { meta, data } = pending.shift()!;
       if (meta.kind === "audio") {
         await writeAudio(stem, meta.name, data);
+        writtenAudio.push(meta.name);
       } else {
         await db.putPeaks(stem, meta.trackId, data);
         writtenPeaks.push(meta.trackId);
@@ -196,8 +211,20 @@ async function writeEntries(
   return written;
 }
 
-async function cleanup(stem: string, writtenPeaks: string[], createdCues: boolean): Promise<void> {
-  await deleteSetAudio(stem).catch(() => {});
+/**
+ * Surgical rollback — remove only what THIS run wrote. A failed re-import over
+ * an existing set must leave the prior good import's audio and peaks untouched
+ * (they belong to the still-listed set row), so we delete the specific audio
+ * files and peaks rows this run created rather than nuking the whole OPFS dir.
+ * (Same-named files this run overwrote are inherently lost — acceptable.)
+ */
+async function cleanup(
+  stem: string,
+  writtenAudio: string[],
+  writtenPeaks: string[],
+  createdCues: boolean,
+): Promise<void> {
+  for (const name of writtenAudio) await deleteAudioFile(stem, name).catch(() => {});
   for (const trackId of writtenPeaks) await db.deletePeaks(stem, trackId).catch(() => {});
   if (createdCues) await db.deleteCues(stem).catch(() => {});
 }
@@ -214,15 +241,16 @@ export async function importBundle(
   file: File,
   onProgress: (done: number, total: number, label: string) => void,
 ): Promise<StoredSet> {
-  const manifest = await readManifest(file); // throws readable Error; nothing written yet
+  const manifest = await readManifest(file, onProgress); // throws readable Error; nothing written yet
   const stem = manifest.set;
   const expected = expectedEntries(manifest);
 
+  const writtenAudio: string[] = [];
   const writtenPeaks: string[] = [];
   let createdCues = false;
 
   try {
-    const written = await writeEntries(file, manifest, writtenPeaks, onProgress);
+    const written = await writeEntries(file, manifest, writtenAudio, writtenPeaks, onProgress);
 
     const missing = [...expected.keys()].filter((k) => !written.has(k));
     if (missing.length) {
@@ -250,7 +278,7 @@ export async function importBundle(
     await db.putSet(stored);
     return stored;
   } catch (e) {
-    await cleanup(stem, writtenPeaks, createdCues);
+    await cleanup(stem, writtenAudio, writtenPeaks, createdCues);
     if (isQuotaError(e)) {
       throw new Error(
         `Not enough space: this bundle needs ~${formatBytes(file.size)}; free up storage and re-import.`,

@@ -60,6 +60,9 @@ def test_build_zip_contents_and_byte_identical_audio(sine_wav, tmp_path):
     out, skipped = bundle.build(tracks, "Helen's Set", "helens-set", tmp_path)
     assert skipped == []
     with zipfile.ZipFile(out) as z:
+        # manifest.json must be the FIRST entry so the importer's pass 1 can
+        # stop after the file prefix instead of buffering the whole bundle.
+        assert z.namelist()[0] == "manifest.json"
         names = set(z.namelist())
         assert "manifest.json" in names
         m = json.loads(z.read("manifest.json"))

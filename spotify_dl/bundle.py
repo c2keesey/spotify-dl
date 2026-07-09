@@ -52,33 +52,41 @@ def build(tracks, name, stem, out_dir, rate=200):
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{stem}.crate"
 
+    # The manifest is fully computable from the track records before any audio
+    # is written, so build it up front and emit it as the FIRST zip entry. The
+    # importer's pass 1 scans only until it reaches manifest.json; a leading
+    # manifest lets it stop after the file prefix instead of the whole bundle.
+    entries = []  # (src, audio_name, peaks_name), in set order
     manifest = {
         "schema": 1, "set": stem, "name": name,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "order": [str(t["id"]) for t in present],
         "tracks": [],
     }
+    for t in present:
+        tid = str(t["id"])
+        src = Path(t["file_path"])
+        audio_name = f"audio/{tid}{src.suffix.lower()}"
+        peaks_name = f"peaks/{tid}.bin"
+        entries.append((src, audio_name, peaks_name))
+        manifest["tracks"].append({
+            "id": tid, "title": t.get("title") or "",
+            "artist": t.get("artist") or "",
+            "bpm": t.get("bpm"), "key_name": t.get("key_name") or "",
+            "camelot": t.get("camelot") or "",
+            "genre": t.get("genre") or "",
+            "duration": t.get("duration"),
+            "audio": audio_name, "peaks": peaks_name, "peaks_rate": rate,
+        })
+
     with zipfile.ZipFile(out, "w") as z:
-        for t in present:
-            tid = str(t["id"])
-            src = Path(t["file_path"])
-            audio_name = f"audio/{tid}{src.suffix.lower()}"
-            peaks_name = f"peaks/{tid}.bin"
+        z.writestr("manifest.json", json.dumps(manifest, indent=2),
+                   compress_type=zipfile.ZIP_DEFLATED)
+        for src, audio_name, peaks_name in entries:
             # STORED: mp3/m4a don't compress and byte identity is the point.
             z.write(src, audio_name, compress_type=zipfile.ZIP_STORED)
             z.writestr(peaks_name, peaks(src, rate=rate),
                        compress_type=zipfile.ZIP_DEFLATED)
-            manifest["tracks"].append({
-                "id": tid, "title": t.get("title") or "",
-                "artist": t.get("artist") or "",
-                "bpm": t.get("bpm"), "key_name": t.get("key_name") or "",
-                "camelot": t.get("camelot") or "",
-                "genre": t.get("genre") or "",
-                "duration": t.get("duration"),
-                "audio": audio_name, "peaks": peaks_name, "peaks_rate": rate,
-            })
-        z.writestr("manifest.json", json.dumps(manifest, indent=2),
-                   compress_type=zipfile.ZIP_DEFLATED)
     return out, skipped
 
 

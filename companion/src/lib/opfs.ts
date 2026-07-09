@@ -23,6 +23,11 @@ export async function readAudioBlob(stem: string, name: string): Promise<Blob> {
   return file.getFile();
 }
 
+export async function deleteAudioFile(stem: string, name: string): Promise<void> {
+  const dir = await audioDir(stem);
+  await dir.removeEntry(name);
+}
+
 export async function deleteSetAudio(stem: string): Promise<void> {
   const root = await navigator.storage.getDirectory();
   const sets = await root.getDirectoryHandle("sets", { create: true });
