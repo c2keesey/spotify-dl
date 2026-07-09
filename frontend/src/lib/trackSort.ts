@@ -1,36 +1,4 @@
-import type { DjTrack } from "./types";
-
-/**
- * File presence, from the backend (Wave 1 / sdl-9fh). `"unmounted"` means the
- * external volume is unplugged — it must NOT read as deletion; `"not_a_file"` is
- * a `spotify:track:…` streaming entry that never had a local file.
- */
-export type FileState = "present" | "missing" | "unmounted" | "not_a_file";
-
-/**
- * The track record the browser works with once Wave 1's backend fields land:
- * `DjTrack` plus `genre` and `file_state`. Declared here rather than in
- * `lib/types.ts` (owned by the backend wave) so this task stays inside its own
- * files. The API response is normalized structurally through `normalizeTrack`,
- * so this compiles and behaves before the backend fields exist and reads them
- * once they do.
- */
-export type BrowserTrack = DjTrack & {
-  genre: string | null;
-  file_state: FileState;
-};
-
-const FILE_STATES: FileState[] = ["present", "missing", "unmounted", "not_a_file"];
-
-/**
- * Coerce a raw API track into a `BrowserTrack`, defaulting the Wave 1 fields
- * when the backend hasn't shipped them yet (genre → null, file_state →
- * "present"). Accepts a plain `DjTrack` because the extra fields are optional.
- */
-export function normalizeTrack(t: DjTrack & Partial<BrowserTrack>): BrowserTrack {
-  const fs = t.file_state && FILE_STATES.includes(t.file_state) ? t.file_state : "present";
-  return { ...t, genre: t.genre ?? null, file_state: fs };
-}
+import type { DjTrack, FileState } from "./types";
 
 // --- Sorting -----------------------------------------------------------------
 
@@ -51,7 +19,7 @@ export function camelotRank(code: string | null): number | null {
 const str = (s: string | null): string | null =>
   s && s.trim() !== "" ? s.trim().toLowerCase() : null;
 
-const VALUE: Record<SortKey, (t: BrowserTrack) => number | string | null> = {
+const VALUE: Record<SortKey, (t: DjTrack) => number | string | null> = {
   title: (t) => str(t.title),
   artist: (t) => str(t.artist),
   genre: (t) => str(t.genre),
@@ -64,7 +32,7 @@ const VALUE: Record<SortKey, (t: BrowserTrack) => number | string | null> = {
  * Sort a copy of `tracks` by `key`/`dir`. Null values always sort last,
  * regardless of direction — reversing the sort must not float blanks to the top.
  */
-export function sortTracks(tracks: BrowserTrack[], key: SortKey, dir: SortDir): BrowserTrack[] {
+export function sortTracks(tracks: DjTrack[], key: SortKey, dir: SortDir): DjTrack[] {
   const get = VALUE[key];
   const mul = dir === "asc" ? 1 : -1;
   return [...tracks].sort((a, b) => {
@@ -99,7 +67,7 @@ export type TrackFilters = {
  * state) over the already server-filtered list (q / BPM / Camelot). Every filter
  * is AND-ed. A duration bound excludes rows with no known duration.
  */
-export function filterTracks(tracks: BrowserTrack[], f: TrackFilters): BrowserTrack[] {
+export function filterTracks(tracks: DjTrack[], f: TrackFilters): DjTrack[] {
   return tracks.filter((t) => {
     if (f.genre != null && (t.genre ?? "") !== f.genre) return false;
     if (f.analyzedOnly && t.status !== "analyzed") return false;
@@ -113,7 +81,7 @@ export function filterTracks(tracks: BrowserTrack[], f: TrackFilters): BrowserTr
 // --- Presentation helpers ----------------------------------------------------
 
 /** Distinct non-empty genres in the list, alphabetized — feeds the genre filter. */
-export function distinctGenres(tracks: BrowserTrack[]): string[] {
+export function distinctGenres(tracks: DjTrack[]): string[] {
   const set = new Set<string>();
   for (const t of tracks) if (t.genre && t.genre.trim()) set.add(t.genre);
   return [...set].sort((a, b) => a.localeCompare(b));

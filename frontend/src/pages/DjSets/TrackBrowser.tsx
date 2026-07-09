@@ -6,7 +6,6 @@ import type { DjTrack } from "@/lib/types";
 import {
   distinctGenres,
   filterTracks,
-  normalizeTrack,
   sortTracks,
   type FileStateFilter,
   type SortDir,
@@ -67,7 +66,7 @@ export function TrackBrowser({
     queryFn: () => api.djTracks(serverFilters),
   });
 
-  const all = useMemo(() => (tracksQ.data?.tracks ?? []).map(normalizeTrack), [tracksQ.data]);
+  const all = useMemo(() => tracksQ.data?.tracks ?? [], [tracksQ.data]);
   const genres = useMemo(() => distinctGenres(all), [all]);
 
   const rows = useMemo(() => {

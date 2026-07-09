@@ -3,13 +3,12 @@ import {
   distinctGenres,
   filterTracks,
   formatDuration,
-  normalizeTrack,
   sortTracks,
-  type BrowserTrack,
 } from "./trackSort";
+import type { DjTrack } from "./types";
 
-/** Build a BrowserTrack with sensible defaults; override what a test cares about. */
-function track(o: Partial<BrowserTrack> & { id: string }): BrowserTrack {
+/** Build a DjTrack with sensible defaults; override what a test cares about. */
+function track(o: Partial<DjTrack> & { id: string }): DjTrack {
   return {
     id: o.id,
     title: o.title ?? "title",
@@ -25,33 +24,6 @@ function track(o: Partial<BrowserTrack> & { id: string }): BrowserTrack {
     file_state: o.file_state ?? "present",
   };
 }
-
-describe("normalizeTrack", () => {
-  it("defaults the Wave 1 fields when the backend omits them", () => {
-    // A raw DjTrack with no genre/file_state, as the pre-Wave-1 API returns.
-    const raw = {
-      id: "1",
-      title: "t",
-      artist: "a",
-      bpm: null,
-      key_name: null,
-      camelot: null,
-      file_path: "/x",
-      duration: null,
-      status: "analyzed" as const,
-      playlists: [],
-    };
-    const n = normalizeTrack(raw);
-    expect(n.genre).toBeNull();
-    expect(n.file_state).toBe("present");
-  });
-
-  it("passes through backend-provided fields and rejects a bogus file_state", () => {
-    expect(normalizeTrack(track({ id: "1", genre: "Techno", file_state: "missing" })).file_state).toBe("missing");
-    // @ts-expect-error — exercising runtime coercion of an invalid value
-    expect(normalizeTrack(track({ id: "2", file_state: "bogus" })).file_state).toBe("present");
-  });
-});
 
 describe("camelotRank", () => {
   it("orders 1A < 1B < 2A and returns null for unkeyed/invalid", () => {

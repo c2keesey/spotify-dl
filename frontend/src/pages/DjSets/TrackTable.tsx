@@ -15,16 +15,15 @@ import { camelotColor } from "@/lib/camelot";
 import {
   fileStateMeta,
   formatDuration,
-  type BrowserTrack,
-  type FileState,
   type SortDir,
   type SortKey,
 } from "@/lib/trackSort";
+import type { DjTrack, FileState } from "@/lib/types";
 
 const COLSPAN = 8;
 
 /** The key cell: colored Camelot badge, a pulsing "analyzing…", or an em dash. */
-function KeyCell({ track }: { track: BrowserTrack }) {
+function KeyCell({ track }: { track: DjTrack }) {
   if (track.camelot) {
     return (
       <Badge className="border-transparent font-mono text-white" style={{ background: camelotColor(track.camelot) }}>
@@ -102,12 +101,12 @@ export function TrackTable({
   isLoading,
   onRetry,
 }: {
-  rows: BrowserTrack[];
+  rows: DjTrack[];
   sortKey: SortKey | null;
   sortDir: SortDir;
   onSort: (k: SortKey) => void;
   inSet: Set<string>;
-  onAdd: (track: BrowserTrack) => void;
+  onAdd: (track: DjTrack) => void;
   isError: boolean;
   isLoading: boolean;
   onRetry: () => void;
