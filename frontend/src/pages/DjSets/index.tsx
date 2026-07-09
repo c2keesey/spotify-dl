@@ -7,6 +7,7 @@ import { SetRail } from "./SetRail";
 import { CamelotWheel } from "./CamelotWheel";
 import { EnergyScope } from "./EnergyScope";
 import { Duplicates } from "./Duplicates";
+import { AuditionProvider } from "./Audition";
 import { useSetState } from "./useSetState";
 
 /**
@@ -24,6 +25,7 @@ export function DjSetsPage({ outdir }: { outdir: string }) {
     setCamelotFilter((prev) => (prev === code ? "" : code));
 
   return (
+    <AuditionProvider>
     <div className="space-y-8">
       <div style={{ animationDelay: "40ms" }} className="flex flex-wrap items-end justify-between gap-4 animate-[fadeUp_.4s_ease_both]">
         <div>
@@ -86,5 +88,6 @@ export function DjSetsPage({ outdir }: { outdir: string }) {
       </>
       )}
     </div>
+    </AuditionProvider>
   );
 }

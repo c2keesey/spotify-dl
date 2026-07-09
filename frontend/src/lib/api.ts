@@ -55,4 +55,7 @@ export const api = {
   djEnergy: (ids: string[]) => req<EnergyResult>("/api/dj/energy", post({ ids })),
   djExport: (name: string, ids: string[]) => req<{ playlist: string }>("/api/dj/export", post({ name, ids })),
   djDuplicates: () => req<DuplicatesResult>("/api/dj/duplicates"),
+  /** URL the <audio> element streams from. The id is a rekordbox content id;
+   *  the server resolves it to a file — a path is never sent from the client. */
+  djAudioUrl: (id: string) => `/api/dj/audio/${encodeURIComponent(id)}`,
 };

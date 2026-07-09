@@ -19,8 +19,9 @@ import {
 } from "@/lib/trackSort";
 import { formatDuration } from "@/lib/format";
 import type { DjTrack, FileState } from "@/lib/types";
+import { AuditionButton } from "./Audition";
 
-const COLSPAN = 8;
+const COLSPAN = 9;
 
 /** The key cell: colored Camelot badge, a pulsing "analyzing…", or an em dash. */
 function KeyCell({ track }: { track: DjTrack }) {
@@ -119,6 +120,7 @@ export function TrackTable({
       <Table>
         <TableHeader className="sticky top-0 z-10 bg-card [&_th]:h-9">
           <TableRow>
+            <TableHead className="w-10" />
             {head("Title", "title")}
             {head("Artist", "artist")}
             {head("BPM", "bpm", "w-20 text-right [&>button]:ml-0")}
@@ -152,6 +154,9 @@ export function TrackTable({
               const added = inSet.has(t.id);
               return (
                 <TableRow key={t.id} className="[&_td]:py-1.5">
+                  <TableCell className="w-10">
+                    <AuditionButton track={t} />
+                  </TableCell>
                   <TableCell className="max-w-0 truncate text-foreground" title={t.title}>
                     {t.title}
                   </TableCell>
