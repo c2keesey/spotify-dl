@@ -10,6 +10,7 @@ import re
 import shutil
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from spotify_dl.dj import to_camelot
@@ -202,9 +203,11 @@ def load_tracks():
 
 def backup_master_db():
     """Timestamped copy of master.db next to rekordbox's own backups.
-    Called before EVERY write."""
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    dest = MASTER_DB.with_name(f"master.backup.spotify-dl.{stamp}.db")
+    Called before EVERY write. Sub-second precision plus the pid keep the name
+    unique so two back-to-back writes (or two processes) never collide on a
+    whole-second stamp and clobber each other's backup."""
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    dest = MASTER_DB.with_name(f"master.backup.spotify-dl.{stamp}.{os.getpid()}.db")
     shutil.copy2(MASTER_DB, dest)
     return dest
 
@@ -267,6 +270,10 @@ def export_playlist(name, track_ids):
         raise ValueError("empty set")
     if is_rekordbox_running():
         raise RekordboxRunning("close rekordbox first")
+    valid = {t["id"] for t in load_tracks()}
+    unknown = [str(t) for t in track_ids if str(t) not in valid]
+    if unknown:
+        raise ValueError(f"unknown track ids: {', '.join(unknown)}")
     backup_master_db()
     db = open_db()
     try:

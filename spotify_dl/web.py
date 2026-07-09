@@ -14,6 +14,7 @@ import shlex
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -61,6 +62,16 @@ class DownloadRequest(BaseModel):
     output: str = ""
 
 
+def _mp3_set(output):
+    """Absolute paths of every mp3 currently under `output` (empty if not a
+    dir). Used to diff before/after a download so auto-import sees only the
+    files THIS job produced, not the whole (possibly huge) downloads tree."""
+    p = Path(output)
+    if not p.is_dir():
+        return set()
+    return {str(f) for f in p.rglob("*.mp3")}
+
+
 def run_job(job):
     try:
         job["meta"] = [resolve_link(u) for u in job["urls"]]
@@ -75,6 +86,7 @@ def run_job(job):
         "-w",
     ]
     try:
+        before = _mp3_set(job["output"])
         proc = subprocess.Popen(
             cmd, cwd=REPO_ROOT, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -88,8 +100,9 @@ def run_job(job):
         except Exception:  # noqa: BLE001 - source mapping is best-effort
             pass
         if job["status"] == "done":
+            produced = sorted(_mp3_set(job["output"]) - before)
             try:
-                auto_import(job["output"])
+                auto_import(job["output"], produced)
             except Exception:  # noqa: BLE001 - rekordbox import must never fail a download
                 pass
     except Exception as e:  # noqa: BLE001 - surface anything to the UI
@@ -707,6 +720,35 @@ def _dj_tracks_or_503():
         raise HTTPException(503, f"couldn't read rekordbox database: {e}")
 
 
+# not_imported must reflect what an import would ACTUALLY add, so it runs the
+# same fuzzy dedup the importer does (find_duplicates + intra-batch pass), not a
+# naive exact-path compare — otherwise a file that always skips as a fuzzy dupe
+# keeps the "Import N" button alive forever. The exact-path check inside
+# find_duplicates is the cheap pre-filter: already-imported files cost no tag
+# read. Only genuinely-new-or-fuzzy files are tag-read, and the result is cached
+# per folder with a short TTL so the 5s status poll doesn't re-read ID3 tags
+# every time.
+_NOT_IMPORTED_CACHE = {}          # folder path -> (count, monotonic timestamp)
+_NOT_IMPORTED_TTL = 30.0
+_NOT_IMPORTED_LOCK = threading.Lock()
+
+
+def _count_not_imported(folder, tracks):
+    key = str(folder)
+    now = time.monotonic()
+    with _NOT_IMPORTED_LOCK:
+        hit = _NOT_IMPORTED_CACHE.get(key)
+        if hit and now - hit[1] < _NOT_IMPORTED_TTL:
+            return hit[0]
+    files = [str(f) for f in folder.rglob("*.mp3")]
+    new, _dupes = rekordbox.find_duplicates(files, tracks)
+    accepted, _batch_dupes = rekordbox._dedup_within_batch(new)
+    count = len(accepted)
+    with _NOT_IMPORTED_LOCK:
+        _NOT_IMPORTED_CACHE[key] = (count, now)
+    return count
+
+
 @app.get("/api/dj/status")
 def dj_status(path: str = ""):
     """Rekordbox state + analysis counts. Drives the tab's status banner."""
@@ -715,8 +757,7 @@ def dj_status(path: str = ""):
     not_imported = 0
     p = Path(path).expanduser() if path.strip() else None
     if p and p.is_dir():
-        in_collection = {t["file_path"] for t in tracks}
-        not_imported = sum(1 for f in p.rglob("*.mp3") if str(f) not in in_collection)
+        not_imported = _count_not_imported(p, tracks)
     return {
         "running": running,
         "can_write": not running,
@@ -813,17 +854,26 @@ def dj_export(req: DJExportRequest):
         return rekordbox.export_playlist(name, req.ids)
     except rekordbox.RekordboxRunning:
         raise HTTPException(409, "close rekordbox first")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
-def auto_import(output):
-    """Best-effort import of a finished download's folder. Skips quietly when
-    rekordbox is open (the status banner surfaces the pending count instead)."""
+def auto_import(output, files=None):
+    """Best-effort import of a finished download. Skips quietly when rekordbox is
+    open (the status banner surfaces the pending count instead).
+
+    `files` scopes the import to the paths a job actually produced; when None
+    (manual callers), the whole `output` folder is scanned instead."""
     if rekordbox.is_rekordbox_running():
         return
-    p = Path(output)
-    if not p.is_dir():
+    if files is None:
+        p = Path(output)
+        if not p.is_dir():
+            return
+        files = sorted(str(f) for f in p.rglob("*.mp3"))
+    if not files:
         return
-    rekordbox.import_files(sorted(str(f) for f in p.rglob("*.mp3")))
+    rekordbox.import_files(files)
 
 
 DIST_DIR = STATIC_DIR / "dist"

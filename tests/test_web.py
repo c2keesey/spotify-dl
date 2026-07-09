@@ -20,12 +20,13 @@ REAL_AUTO_IMPORT = web.auto_import
 def _no_real_auto_import(monkeypatch):
     """auto_import writes to the real rekordbox DB when rekordbox is closed —
     never let a test reach it. Tests that need it use REAL_AUTO_IMPORT."""
-    monkeypatch.setattr(web, "auto_import", lambda output: None)
+    monkeypatch.setattr(web, "auto_import", lambda output, files=None: None)
 
 
 @pytest.fixture
 def client():
     web.jobs.clear()
+    web._NOT_IMPORTED_CACHE.clear()
     return TestClient(web.app)
 
 
@@ -346,6 +347,35 @@ def test_dj_status(client, monkeypatch, tmp_path):
                  "missing": 1, "unmounted": 1, "not_a_file": 1}
 
 
+def test_dj_status_not_imported_honors_fuzzy_dedup(client, monkeypatch, tmp_path):
+    """A folder file that is a FUZZY duplicate (same artist/title/duration, a
+    different path) of a collection track must not be counted as not_imported —
+    the importer would skip it, so the Import button would never clear."""
+    (tmp_path / "copy.mp3").write_text("x")     # NOT the collection's path
+    monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: False)
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(file_path="/lib/original.mp3", artist="Artist",
+                title="Song", duration=200)])
+    # find_duplicates reads the folder file's tags — make them match by song
+    monkeypatch.setattr(web.rekordbox, "file_tags",
+                        lambda p: ("Artist", "Song", 201.0))
+    d = client.get("/api/dj/status", params={"path": str(tmp_path)}).json()
+    assert d["not_imported"] == 0
+
+
+def test_dj_status_not_imported_counts_genuinely_new(client, monkeypatch, tmp_path):
+    """A folder file that is NOT a duplicate of anything is still counted."""
+    (tmp_path / "brand_new.mp3").write_text("x")
+    monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: False)
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(file_path="/lib/original.mp3", artist="Artist",
+                title="Song", duration=200)])
+    monkeypatch.setattr(web.rekordbox, "file_tags",
+                        lambda p: ("Nobody", "Unheard", 333.0))
+    d = client.get("/api/dj/status", params={"path": str(tmp_path)}).json()
+    assert d["not_imported"] == 1
+
+
 def test_dj_tracks_filters(client, monkeypatch):
     monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
         DJTRACK(),
@@ -443,11 +473,22 @@ def test_dj_export_empty_is_400(client):
     assert client.post("/api/dj/export", json={"name": " ", "ids": ["1"]}).status_code == 400
 
 
+def test_dj_export_unknown_ids_is_400(client, monkeypatch):
+    """export_playlist validates ids exist in the collection; a ValueError from
+    that guard surfaces as a 400, not an unhandled 500."""
+    def refuse(name, ids):
+        raise ValueError("unknown track ids: 999")
+    monkeypatch.setattr(web.rekordbox, "export_playlist", refuse)
+    r = client.post("/api/dj/export", json={"name": "Set", "ids": ["999"]})
+    assert r.status_code == 400 and "unknown track ids" in r.json()["detail"]
+
+
 def test_run_job_auto_imports_on_success(client, monkeypatch, tmp_path):
     lines = ["Total songs: 1\n", "[ExtractAudio] Destination: x.mp3\n"]
     monkeypatch.setattr(web.subprocess, "Popen", lambda *a, **k: FakeProc(lines, 0))
     imported = []
-    monkeypatch.setattr(web, "auto_import", lambda output: imported.append(output))
+    monkeypatch.setattr(web, "auto_import",
+                        lambda output, files=None: imported.append(output))
     # Keep record_sources() off the network (see module docstring: "no network").
     # Without this, a real Spotify lookup inside record_sources races the
     # status-polling loop below whenever live credentials are configured.
@@ -455,13 +496,42 @@ def test_run_job_auto_imports_on_success(client, monkeypatch, tmp_path):
     r = client.post("/api/download",
                     json={"urls": ["https://open.spotify.com/track/abc"],
                           "output": str(tmp_path)})
-    job = web.jobs[r.json()["id"]]
     import time
     for _ in range(200):
-        if job["status"] != "running":
+        if imported:                       # poll on the actual effect, not status
             break
         time.sleep(0.01)
     assert imported == [str(tmp_path)]
+
+
+def test_run_job_scopes_auto_import_to_own_output(client, monkeypatch, tmp_path):
+    """auto_import must be handed only the files THIS job produced, not the whole
+    downloads tree — an mp3 that was already present before the job runs must
+    not be re-offered to the importer."""
+    (tmp_path / "already_here.mp3").write_text("x")   # present before the job
+
+    def popen_that_downloads(*a, **k):
+        (tmp_path / "fresh.mp3").write_text("x")       # the job's own new file
+        return FakeProc(["Total songs: 1\n",
+                         "[ExtractAudio] Destination: fresh.mp3\n"], 0)
+
+    monkeypatch.setattr(web.subprocess, "Popen", popen_that_downloads)
+    captured = []
+    monkeypatch.setattr(web, "auto_import",
+                        lambda output, files=None: captured.append((output, files)))
+    monkeypatch.setattr(web, "spotify_client", lambda: (_ for _ in ()).throw(RuntimeError("missing-credentials")))
+    r = client.post("/api/download",
+                    json={"urls": ["https://open.spotify.com/track/abc"],
+                          "output": str(tmp_path)})
+    import time
+    for _ in range(200):
+        if captured:
+            break
+        time.sleep(0.01)
+    assert captured, "auto_import was never called"
+    output, files = captured[0]
+    assert output == str(tmp_path)
+    assert files == [str(tmp_path / "fresh.mp3")]     # only the new file
 
 
 def test_auto_import_skips_when_rekordbox_open(monkeypatch, tmp_path):

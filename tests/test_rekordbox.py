@@ -1,9 +1,15 @@
 """Tests for the rekordbox layer. Pure logic (dedup, normalization) tests run
 everywhere; anything touching the live DB is guarded and read-only."""
 
+import os
+import shutil
+import subprocess
+
 import pytest
 
 from spotify_dl import rekordbox as rb
+
+FFMPEG = shutil.which("ffmpeg")
 
 
 # ---- normalization ----
@@ -75,6 +81,60 @@ def test_missing_duration_matches_on_name_alone(monkeypatch):
     monkeypatch.setattr(rb, "file_tags", lambda p: ("Artist", "Song", None))
     new, dupes = rb.find_duplicates(["/d/x.mp3"], [EX(duration=None)])
     assert new == [] and len(dupes) == 1
+
+
+# ---- file_tags (against real mp3 files) ----
+
+@pytest.fixture
+def make_mp3(tmp_path):
+    """Encode a tiny real silent mp3 (so mutagen can read info.length) and
+    optionally write EasyID3 artist/title tags."""
+    def _make(name="track.mp3", seconds=1.0, artist=None, title=None):
+        path = tmp_path / name
+        subprocess.run(
+            [FFMPEG, "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+             "-t", str(seconds), "-q:a", "9", str(path)],
+            capture_output=True, check=True,
+        )
+        if artist is not None or title is not None:
+            from mutagen.easyid3 import EasyID3
+            from mutagen.id3 import ID3NoHeaderError
+            try:
+                audio = EasyID3(str(path))
+            except ID3NoHeaderError:
+                audio = EasyID3()
+            if artist is not None:
+                audio["artist"] = artist
+            if title is not None:
+                audio["title"] = title
+            audio.save(str(path))
+        return path
+    return _make
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg required to encode a test mp3")
+def test_file_tags_reads_id3(make_mp3):
+    p = make_mp3(artist="KAYTRANADA", title="Intimidated", seconds=1.0)
+    artist, title, dur = rb.file_tags(str(p))
+    assert artist == "KAYTRANADA"
+    assert title == "Intimidated"
+    assert dur is not None and 0.5 < dur < 3.0
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg required to encode a test mp3")
+def test_file_tags_falls_back_to_stem_when_title_absent(make_mp3):
+    # tags exist (artist set) but no title -> title comes from the filename stem
+    p = make_mp3(name="Cool Track.mp3", artist="Someone", seconds=1.0)
+    artist, title, dur = rb.file_tags(str(p))
+    assert artist == "Someone"
+    assert title == "Cool Track"
+    assert dur is not None and dur > 0.5
+
+
+def test_file_tags_unreadable_file_returns_stem_and_none(tmp_path):
+    p = tmp_path / "not-audio.mp3"
+    p.write_text("this is definitely not an mp3")
+    assert rb.file_tags(str(p)) == ("", "not-audio", None)
 
 
 # ---- read layer (record shaping is pure; live read is guarded) ----
@@ -196,6 +256,20 @@ def test_backup_master_db(tmp_path, monkeypatch):
     assert dest.parent == src.parent
 
 
+def test_backup_master_db_names_are_unique(tmp_path, monkeypatch):
+    """Two back-to-back backups must not collide — sub-second precision + pid
+    keep the filenames distinct (a whole-second stamp collided under rapid
+    successive writes)."""
+    src = tmp_path / "master.db"
+    src.write_bytes(b"db-bytes")
+    monkeypatch.setattr(rb, "MASTER_DB", src)
+    d1 = rb.backup_master_db()
+    d2 = rb.backup_master_db()
+    assert d1 != d2
+    assert d1.exists() and d2.exists()
+    assert str(os.getpid()) in d1.name
+
+
 LIVE_DB = Path.home() / "Library/Pioneer/rekordbox/master.db"
 
 
@@ -307,6 +381,9 @@ def stub_export(monkeypatch):
         monkeypatch.setattr(rb, "is_rekordbox_running", lambda: False)
         monkeypatch.setattr(rb, "open_db", lambda: fake)
         monkeypatch.setattr(rb, "backup_master_db", lambda: Path("/tmp/b.db"))
+        # export validates ids against the collection first
+        monkeypatch.setattr(rb, "load_tracks",
+                            lambda: [{"id": "10"}, {"id": "20"}, {"id": "30"}])
         return fake
     return make
 
@@ -332,6 +409,16 @@ def test_export_refuses_while_running(monkeypatch):
     monkeypatch.setattr(rb, "is_rekordbox_running", lambda: True)
     with pytest.raises(rb.RekordboxRunning):
         rb.export_playlist("X", ["1"])
+
+
+def test_export_rejects_unknown_ids(stub_export, monkeypatch):
+    """An id that isn't in the collection is refused BEFORE any write — no
+    backup, no playlist creation."""
+    fake = stub_export()
+    monkeypatch.setattr(rb, "load_tracks", lambda: [{"id": "10"}])
+    with pytest.raises(ValueError):
+        rb.export_playlist("Set", ["10", "999"])
+    assert fake.created == [] and not fake.committed
 
 
 def test_export_rejects_empty(stub_export):
