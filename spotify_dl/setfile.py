@@ -331,10 +331,16 @@ def _location_url(path):
     return "file://localhost" + quote(path)
 
 
-def to_rekordbox_xml(tracks, playlist_name):
+def to_rekordbox_xml(tracks, playlist_name, cues=None):
     """A DJ_PLAYLISTS document rekordbox can import: a COLLECTION of TRACK nodes
     plus a PLAYLISTS node referencing them, in order. Streaming-only entries
-    (no filesystem path) are omitted. ElementTree escapes all values."""
+    (no filesystem path) are omitted. ElementTree escapes all values.
+
+    `cues` (optional) is `parse_cues(...)["cues"]`: a mapping of
+    `{track_id: [{"num", "name", "start", "end"}]}`. Each cue becomes a
+    POSITION_MARK on its TRACK — a point (Type="0") or, when `end` is set, a
+    loop (Type="4", carrying End). Absent `cues`, output is byte-identical to
+    the cue-free document."""
     included = [t for t in tracks if _is_file_path(_track_path(t))]
     # A stable key per track, shared by the COLLECTION TrackID and the playlist
     # TRACK Key so the reference resolves.
@@ -345,14 +351,22 @@ def to_rekordbox_xml(tracks, playlist_name):
     collection = ET.SubElement(root, "COLLECTION", Entries=str(len(keyed)))
     for key, t in keyed:
         total = _duration_secs(t)
-        ET.SubElement(collection, "TRACK",
-                      TrackID=key,
-                      Name=t.get("title") or "",
-                      Artist=t.get("artist") or "",
-                      AverageBpm=_fmt_bpm(t.get("bpm")),
-                      Tonality=t.get("key_name") or "",
-                      TotalTime=str(total if total >= 0 else 0),
-                      Location=_location_url(_track_path(t)))
+        tr = ET.SubElement(collection, "TRACK",
+                           TrackID=key,
+                           Name=t.get("title") or "",
+                           Artist=t.get("artist") or "",
+                           AverageBpm=_fmt_bpm(t.get("bpm")),
+                           Tonality=t.get("key_name") or "",
+                           TotalTime=str(total if total >= 0 else 0),
+                           Location=_location_url(_track_path(t)))
+        for c in (cues or {}).get(str(t.get("id")), []):
+            attrs = {"Name": c.get("name") or "",
+                     "Type": "4" if c.get("end") is not None else "0",
+                     "Start": f"{c['start']:.3f}",
+                     "Num": str(c["num"])}
+            if c.get("end") is not None:
+                attrs["End"] = f"{c['end']:.3f}"
+            ET.SubElement(tr, "POSITION_MARK", **attrs)
 
     playlists = ET.SubElement(root, "PLAYLISTS")
     rootnode = ET.SubElement(playlists, "NODE", Type="0", Name="ROOT", Count="1")

@@ -180,6 +180,50 @@ def test_xml_missing_file_still_included(tmp_path):
     assert root.find("COLLECTION").get("Entries") == "1"
 
 
+# ---- rekordbox XML: POSITION_MARK hot cues / loops ----
+
+def test_xml_position_marks_point_and_loop():
+    tracks = [{"id": "4471", "title": "333", "artist": "Whyte Fang",
+               "bpm": 174.0, "key_name": "Fm", "duration": 214,
+               "file_path": "/Music/333.mp3"}]
+    cues = {"4471": [
+        {"num": 0, "name": "drop", "start": 34.512, "end": None},
+        {"num": 1, "name": "build", "start": 12.0, "end": 20.0},
+    ]}
+    xml = setfile.to_rekordbox_xml(tracks, "S", cues=cues)
+    root = ET.fromstring(xml)
+    track = root.find("COLLECTION/TRACK")
+    marks = track.findall("POSITION_MARK")
+    assert len(marks) == 2
+    point, loop = marks
+    assert point.get("Name") == "drop"
+    assert point.get("Type") == "0"
+    assert point.get("Start") == "34.512"
+    assert point.get("Num") == "0"
+    assert point.get("End") is None
+    assert loop.get("Type") == "4"
+    assert loop.get("Start") == "12.000"
+    assert loop.get("End") == "20.000"
+    assert loop.get("Num") == "1"
+
+
+def test_xml_without_cues_is_byte_identical_to_before():
+    tracks = [{"id": "1", "title": "t", "artist": "a", "bpm": 120,
+               "key_name": "Am", "duration": 100, "file_path": "/m/t.mp3"}]
+    assert (setfile.to_rekordbox_xml(tracks, "S")
+            == setfile.to_rekordbox_xml(tracks, "S", cues=None))
+    root = ET.fromstring(setfile.to_rekordbox_xml(tracks, "S"))
+    assert root.find("COLLECTION/TRACK/POSITION_MARK") is None
+
+
+def test_xml_cues_for_unknown_track_id_ignored():
+    tracks = [{"id": "1", "title": "t", "artist": "a", "bpm": 120,
+               "key_name": "Am", "duration": 100, "file_path": "/m/t.mp3"}]
+    xml = setfile.to_rekordbox_xml(tracks, "S", cues={"999": [
+        {"num": 0, "name": "", "start": 1.0, "end": None}]})
+    assert ET.fromstring(xml).find("COLLECTION/TRACK/POSITION_MARK") is None
+
+
 # ---- list_sets ----
 
 def test_list_sets(tmp_path):
