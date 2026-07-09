@@ -72,6 +72,25 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, await detailOf(res));
     return res.text();
   },
+  /** Flightcase bundle: audio + peaks + manifest as one .crate zip. Read-only
+   *  w.r.t. rekordbox; skipped-track count rides a response header. */
+  djBundle: async (stem: string) => {
+    const res = await fetch("/api/dj/bundle", post({ set: stem }));
+    if (!res.ok) throw new ApiError(res.status, await detailOf(res));
+    return {
+      blob: await res.blob(),
+      filename: `${stem}.crate`,
+      skipped: Number(res.headers.get("X-Skipped-Tracks") || 0),
+    };
+  },
+  /** cues.json (from the Flightcase app) -> rekordbox XML with hot cues.
+   *  Unknown ids come back in a header; the XML still covers the rest. */
+  djCuesXml: async (cues: unknown) => {
+    const res = await fetch("/api/dj/cues/xml", post({ cues }));
+    if (!res.ok) throw new ApiError(res.status, await detailOf(res));
+    const unknown = (res.headers.get("X-Unknown-Ids") || "").split(",").filter(Boolean);
+    return { xml: await res.text(), unknown };
+  },
   djDuplicates: () => req<DuplicatesResult>("/api/dj/duplicates"),
   // ---- saved sets (Crate's own files; safe while rekordbox is open) ----
   djSets: () => req<{ sets: SetSummary[] }>("/api/dj/sets").then((r) => r.sets),

@@ -74,6 +74,60 @@ describe("api", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/dj/duplicates", undefined);
   });
 
+  it("djBundle returns the blob, a <stem>.crate filename, and the skipped-track header", async () => {
+    const blob = new Blob(["zip"]);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "X-Skipped-Tracks": "2" }),
+      blob: async () => blob,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.djBundle("my-set")).resolves.toEqual({ blob, filename: "my-set.crate", skipped: 2 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/dj/bundle",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ set: "my-set" }) })
+    );
+  });
+
+  it("djBundle defaults skipped to 0 when the header is absent", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200, headers: new Headers(), blob: async () => new Blob([]),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.djBundle("s")).resolves.toMatchObject({ skipped: 0 });
+  });
+
+  it("djCuesXml returns the XML text and splits the unknown-ids header (empty when none)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "X-Unknown-Ids": "a,b" }),
+      text: async () => "<DJ_PLAYLISTS/>",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.djCuesXml({ order: [] })).resolves.toEqual({ xml: "<DJ_PLAYLISTS/>", unknown: ["a", "b"] });
+
+    const noneMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200, headers: new Headers({ "X-Unknown-Ids": "" }), text: async () => "<x/>",
+    });
+    vi.stubGlobal("fetch", noneMock);
+    await expect(api.djCuesXml({})).resolves.toMatchObject({ unknown: [] });
+  });
+
+  it("djCuesXml throws ApiError with detail on a 400", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false, status: 400, statusText: "Bad Request",
+      json: async () => ({ detail: "no track ids match the library" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.djCuesXml({})).rejects.toMatchObject({ status: 400, detail: "no track ids match the library" });
+  });
+
   it("preview URL-encodes the url param", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

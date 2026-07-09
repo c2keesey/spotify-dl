@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,25 @@ import { forkFromPlaylist, openResolutionNote } from "./setResolve";
 
 const fail = (e: unknown, fallback: string) =>
   toast.error(e instanceof ApiError ? e.detail : fallback);
+
+/** Save a blob to disk via a throwaway object-URL anchor click (same pattern as
+ *  SaveSetDialog's .xml export). Revoked immediately after the click fires. */
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** The set name a cues.json carries, for the XML download filename. Mirrors the
+ *  server's fallback (name → set → "Flightcase cues"). */
+function cuesSetName(cues: unknown): string {
+  const c = (cues ?? {}) as { name?: unknown; set?: unknown };
+  const pick = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "");
+  return pick(c.name) || pick(c.set) || "Flightcase cues";
+}
 
 /** One saved-set row: open into the rail, rename, duplicate, delete. Exported
  *  sets carry an LED + engraved "exported" label (never colour alone). */
@@ -41,6 +60,15 @@ function SetRow({ set, onOpen, onChanged }: {
     mutationFn: () => api.djDeleteSet(set.stem),
     onSuccess: onChanged, onError: (e) => fail(e, "Delete failed"),
   });
+  const bundle = useMutation({
+    mutationFn: () => api.djBundle(set.stem),
+    onSuccess: ({ blob, filename, skipped }) => {
+      saveBlob(blob, filename);
+      if (skipped > 0) toast.warning(`${skipped} track${skipped > 1 ? "s" : ""} skipped (missing files)`);
+      else toast.success(`Bundled "${set.name}"`);
+    },
+    onError: (e) => fail(e, "Bundle failed"),
+  });
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
@@ -58,6 +86,9 @@ function SetRow({ set, onOpen, onChanged }: {
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <Button type="button" size="sm" disabled={open.isPending} onClick={() => open.mutate()}>Open</Button>
+        <Button type="button" size="sm" variant="ghost" disabled={bundle.isPending} onClick={() => bundle.mutate()} title="Download a .crate bundle (audio + waveform peaks) for the Flightcase app">
+          {bundle.isPending ? "Bundling…" : "Bundle"}
+        </Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => {
           const name = window.prompt("Rename set", set.name);
           if (name && name.trim()) rename.mutate(name.trim());
@@ -116,6 +147,33 @@ export function SetLibrary({ tracks, setIds, onOpen }: {
     onError: (e) => fail(e, "Save failed"),
   });
 
+  // Import a Flightcase cues.json (edited on the plane) and get a rekordbox XML
+  // back — additive, never mutates a playlist. The parsed cues are the mutation
+  // variables so onSuccess can name the download from them.
+  const cuesInput = useRef<HTMLInputElement>(null);
+  const importCues = useMutation({
+    mutationFn: (cues: unknown) => api.djCuesXml(cues),
+    onSuccess: ({ xml, unknown }, cues) => {
+      saveBlob(new Blob([xml], { type: "application/xml" }), `${cuesSetName(cues)} cues.xml`);
+      if (unknown.length) toast.warning(`${unknown.length} track${unknown.length > 1 ? "s" : ""} not in library — omitted`);
+      else toast.success("Downloaded rekordbox XML");
+    },
+    onError: (e) => fail(e, "Cues import failed"),
+  });
+  async function onCuesFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be picked again after a fix
+    if (!file) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      toast.error(`Couldn't read "${file.name}" — not valid JSON.`);
+      return;
+    }
+    importCues.mutate(parsed);
+  }
+
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -130,7 +188,15 @@ export function SetLibrary({ tracks, setIds, onOpen }: {
       </div>
 
       <div className="space-y-3">
-        <PanelHeader action={<Button type="button" size="sm" variant="ghost" onClick={refreshSets}>Refresh</Button>}>Saved Sets</PanelHeader>
+        <PanelHeader action={
+          <div className="flex items-center gap-1">
+            <input ref={cuesInput} type="file" accept="application/json,.json" className="hidden" onChange={onCuesFile} />
+            <Button type="button" size="sm" variant="ghost" disabled={importCues.isPending} onClick={() => cuesInput.current?.click()} title="Turn a Flightcase cues.json back into a rekordbox XML (imports as a new playlist)">
+              {importCues.isPending ? "Importing…" : "Import cues"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={refreshSets}>Refresh</Button>
+          </div>
+        }>Saved Sets</PanelHeader>
         {sets.isError ? (
           <p className="px-1 text-sm text-muted-foreground">Couldn't read saved sets.</p>
         ) : !sets.data ? (
