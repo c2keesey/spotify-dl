@@ -64,6 +64,15 @@ def _durations_similar(d1, d2, tol=5.0):
     return abs(d1 - d2) <= tol
 
 
+def _fuzzy_match(a1, t1, d1, a2, t2, d2):
+    """The dedup fuzzy predicate, in one place: same normalized title, matching
+    artists, similar duration. Shared by find_duplicates (candidate-vs-existing)
+    and group_duplicates (collection-vs-itself) so both use identical rules."""
+    return (norm_title(t1) == norm_title(t2)
+            and _artists_match(a1, a2)
+            and _durations_similar(d1, d2))
+
+
 def find_duplicates(paths, existing):
     """Split candidate file paths into (new, dupes) against existing collection
     records. THE dedup gate: runs before every import, always."""
@@ -81,7 +90,7 @@ def find_duplicates(paths, existing):
         artist, title, dur = file_tags(p)
         hit = next(
             (m for m in by_title.get(norm_title(title), [])
-             if _artists_match(artist, m["artist"]) and _durations_similar(dur, m["duration"])),
+             if _fuzzy_match(artist, title, dur, m["artist"], m["title"], m["duration"])),
             None,
         )
         if hit:
@@ -90,6 +99,70 @@ def find_duplicates(paths, existing):
         else:
             new.append(p)
     return new, dupes
+
+
+def _cluster(records, match):
+    """Greedy transitive-ish clustering: a record joins the first existing
+    cluster it matches (by `match`), else opens a new one. Returns only clusters
+    of 2+ (a lone record is not a duplicate of anything)."""
+    clusters = []
+    for r in records:
+        for c in clusters:
+            if any(match(r, m) for m in c):
+                c.append(r)
+                break
+        else:
+            clusters.append([r])
+    return [c for c in clusters if len(c) > 1]
+
+
+def _records_fuzzy_match(a, b):
+    return _fuzzy_match(a["artist"], a["title"], a["duration"],
+                        b["artist"], b["title"], b["duration"])
+
+
+def group_duplicates(records):
+    """Group a collection's own tracks into duplicate candidate groups, reusing
+    find_duplicates' matching (via _fuzzy_match). Two passes, each group tagged
+    with its match reason and the compared field values:
+
+    - "exact_path": 2+ rows referencing the identical absolute file. Certain.
+    - "fuzzy": the same song at DIFFERENT paths — the sync-copy case (spotify-dl
+      copies a track into each playlist folder). A guess.
+
+    Only real filesystem paths are eligible. A spotify:track: URI (or empty
+    path) is `not_a_file`: it is a streaming pointer, not "the same file at two
+    paths", so it is excluded from both passes. Missing / unmounted files stay
+    in — the match runs on the DB's own artist/title/duration, so it NEVER
+    re-reads ID3 tags (926 of 1437 files aren't on disk to read). Exact dups are
+    never also reported as fuzzy."""
+    eligible = [r for r in records if os.path.isabs(r.get("file_path") or "")]
+
+    by_path = {}
+    for r in eligible:
+        by_path.setdefault(r["file_path"], []).append(r)
+    exact, exact_paths = [], set()
+    for path, rs in sorted(by_path.items()):
+        if len(rs) > 1:
+            exact.append({"reason": "exact_path",
+                          "compared": {"file_path": path},
+                          "tracks": rs})
+            exact_paths.add(path)
+
+    buckets = {}
+    for r in eligible:
+        if r["file_path"] not in exact_paths:
+            buckets.setdefault(norm_title(r["title"]), []).append(r)
+    fuzzy = []
+    for nt in sorted(buckets):
+        for cluster in _cluster(buckets[nt], _records_fuzzy_match):
+            rep = cluster[0]
+            fuzzy.append({"reason": "fuzzy",
+                          "compared": {"artist": rep["artist"], "title": rep["title"],
+                                       "norm_title": norm_title(rep["title"]),
+                                       "duration": rep["duration"]},
+                          "tracks": cluster})
+    return exact + fuzzy
 
 
 # ---- file presence ----

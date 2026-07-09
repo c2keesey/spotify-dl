@@ -17,3 +17,11 @@ export type Rating = "good" | "ok" | "clash";
 export type EnergyState = "measured" | "missing" | "failed";
 export type EnergyResult = { energy: Record<string, number | null>; state: Record<string, EnergyState> };
 export type ImportResult = { imported: string[]; skipped_duplicates: { path: string; reason: string }[] };
+/** Why a duplicate group was matched. "exact_path" is certain (same file at the
+ *  same path); "fuzzy" is a guess (same song, different paths). */
+export type DupeReason = "exact_path" | "fuzzy";
+/** The field values that were compared to form a group, so the UI can show WHY.
+ *  exact groups carry file_path; fuzzy groups carry artist/title/duration. */
+export type DupeCompared = { file_path?: string; artist?: string; title?: string; norm_title?: string; duration?: number | null };
+export type DupeGroup = { reason: DupeReason; compared: DupeCompared; tracks: DjTrack[] };
+export type DuplicatesResult = { groups: DupeGroup[]; exact_count: number; fuzzy_count: number };

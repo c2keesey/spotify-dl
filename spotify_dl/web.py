@@ -798,6 +798,21 @@ def dj_tracks(bpm_min: float = 0, bpm_max: float = 0, camelot: str = "",
     return {"tracks": tracks}
 
 
+@app.get("/api/dj/duplicates")
+def dj_duplicates():
+    """Duplicate candidate groups in the collection — the review artifact for the
+    original complaint (duplicate files in rekordbox). Read-only: reads the DB
+    and reuses find_duplicates' matching, never re-reading ID3 tags, so it works
+    while rekordbox is running. Crate deletes nothing here; the user selects
+    copies and exports them to a NEW playlist she deletes by hand in rekordbox."""
+    groups = rekordbox.group_duplicates(_dj_tracks_or_503())
+    return {
+        "groups": groups,
+        "exact_count": sum(1 for g in groups if g["reason"] == "exact_path"),
+        "fuzzy_count": sum(1 for g in groups if g["reason"] == "fuzzy"),
+    }
+
+
 class DJImportRequest(BaseModel):
     path: str
 

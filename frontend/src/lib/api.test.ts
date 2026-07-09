@@ -65,6 +65,15 @@ describe("api", () => {
     );
   });
 
+  it("djDuplicates() GETs the duplicates endpoint and returns the parsed result", async () => {
+    const result = { groups: [], exact_count: 0, fuzzy_count: 0 };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => result });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.djDuplicates()).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith("/api/dj/duplicates", undefined);
+  });
+
   it("preview URL-encodes the url param", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

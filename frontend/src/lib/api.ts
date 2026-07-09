@@ -1,4 +1,4 @@
-import type { AppConfig, BrowseResult, Cron, DjStatus, DjTrack, EnergyResult, FileState, ImportResult, Job, Library, LinkMeta, Rating } from "./types";
+import type { AppConfig, BrowseResult, Cron, DjStatus, DjTrack, DuplicatesResult, EnergyResult, FileState, ImportResult, Job, Library, LinkMeta, Rating } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -54,4 +54,5 @@ export const api = {
   djCompatibility: (ids: string[]) => req<{ ratings: Rating[] }>("/api/dj/compatibility", post({ ids })),
   djEnergy: (ids: string[]) => req<EnergyResult>("/api/dj/energy", post({ ids })),
   djExport: (name: string, ids: string[]) => req<{ playlist: string }>("/api/dj/export", post({ name, ids })),
+  djDuplicates: () => req<DuplicatesResult>("/api/dj/duplicates"),
 };

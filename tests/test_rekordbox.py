@@ -83,6 +83,102 @@ def test_missing_duration_matches_on_name_alone(monkeypatch):
     assert new == [] and len(dupes) == 1
 
 
+# ---- duplicate grouping (collection-vs-itself) ----
+
+def REC(id, path="/lib/a.mp3", artist="Artist", title="Song", duration=200.0):
+    """A normalized collection record as load_tracks() produces (the fields
+    group_duplicates reads: id, file_path, artist, title, duration)."""
+    return {"id": str(id), "file_path": path, "artist": artist, "title": title,
+            "duration": duration, "file_state": rb.file_state(path)}
+
+
+def test_group_exact_path_duplicates():
+    # Two rows pointing at the identical absolute file → a certain (exact) dup.
+    groups = rb.group_duplicates([
+        REC(1, path="/lib/a.mp3"),
+        REC(2, path="/lib/a.mp3"),
+        REC(3, path="/lib/b.mp3"),
+    ])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g["reason"] == "exact_path"
+    assert g["compared"]["file_path"] == "/lib/a.mp3"
+    assert {t["id"] for t in g["tracks"]} == {"1", "2"}
+
+
+def test_group_fuzzy_same_song_different_paths():
+    # The sync-copy case: same song copied into two folders → different paths,
+    # matched on the DB's own artist/title/duration.
+    groups = rb.group_duplicates([
+        REC(1, path="/lib/house/song.mp3", title="Song (feat. Guest)", duration=201.0),
+        REC(2, path="/lib/faves/song.mp3", title="Song", duration=200.0),
+    ])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g["reason"] == "fuzzy"
+    assert {t["id"] for t in g["tracks"]} == {"1", "2"}
+    assert "artist" in g["compared"] and "title" in g["compared"]
+    assert "duration" in g["compared"]
+
+
+def test_group_fuzzy_three_copies():
+    groups = rb.group_duplicates([
+        REC(1, path="/lib/a/x.mp3"),
+        REC(2, path="/lib/b/x.mp3"),
+        REC(3, path="/lib/c/x.mp3"),
+    ])
+    assert len(groups) == 1
+    assert groups[0]["reason"] == "fuzzy"
+    assert len(groups[0]["tracks"]) == 3
+
+
+def test_group_uses_db_metadata_never_reads_tags(monkeypatch):
+    # 926 of 1437 files are missing on disk and cannot be tag-read. Grouping must
+    # rely on the DB's title/artist/duration, NEVER on file_tags — so even if
+    # every file is gone (and file_tags would blow up), grouping still works.
+    def explode(_p):
+        raise AssertionError("group_duplicates must not read ID3 tags")
+    monkeypatch.setattr(rb, "file_tags", explode)
+    groups = rb.group_duplicates([
+        REC(1, path="/gone/a/x.mp3"),   # missing files
+        REC(2, path="/gone/b/x.mp3"),
+    ])
+    assert len(groups) == 1 and groups[0]["reason"] == "fuzzy"
+
+
+def test_group_excludes_non_file_entries():
+    # spotify:track: URIs are streaming pointers, not "the same file at two
+    # paths" — they must never be grouped as duplicates, even if identical.
+    groups = rb.group_duplicates([
+        REC(1, path="spotify:track:abc", title="Song"),
+        REC(2, path="spotify:track:abc", title="Song"),
+        REC(3, path="", title="Song"),
+    ])
+    assert groups == []
+
+
+def test_group_different_songs_same_title_word_not_merged():
+    groups = rb.group_duplicates([
+        REC(1, path="/lib/a.mp3", title="Song", artist="Artist"),
+        REC(2, path="/lib/b.mp3", title="Song (Club Remix)", artist="Artist"),
+    ])
+    assert groups == []
+
+
+def test_group_exact_not_double_reported_as_fuzzy():
+    # A path referenced twice is an exact dup; it must appear once (exact), not
+    # also show up in a fuzzy group.
+    groups = rb.group_duplicates([
+        REC(1, path="/lib/a.mp3", title="Song"),
+        REC(2, path="/lib/a.mp3", title="Song"),
+    ])
+    assert len(groups) == 1 and groups[0]["reason"] == "exact_path"
+
+
+def test_group_empty_collection():
+    assert rb.group_duplicates([]) == []
+
+
 # ---- file_tags (against real mp3 files) ----
 
 @pytest.fixture

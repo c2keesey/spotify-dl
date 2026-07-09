@@ -483,6 +483,45 @@ def test_dj_export_unknown_ids_is_400(client, monkeypatch):
     assert r.status_code == 400 and "unknown track ids" in r.json()["detail"]
 
 
+# ---- dj: duplicates (read-only; works while rekordbox runs) ----
+
+def test_dj_duplicates_groups_exact_and_fuzzy(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "is_rekordbox_running", lambda: True)
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", file_path="/lib/a.mp3", title="Song", duration=200),
+        DJTRACK(id="2", file_path="/lib/a.mp3", title="Song", duration=200),   # exact
+        DJTRACK(id="3", file_path="/lib/house/x.mp3", title="Copy", duration=180),
+        DJTRACK(id="4", file_path="/lib/faves/x.mp3", title="Copy", duration=181),  # fuzzy
+        DJTRACK(id="5", file_path="/lib/unique.mp3", title="Alone", duration=99),  # not a dup
+    ])
+    d = client.get("/api/dj/duplicates").json()
+    assert d["exact_count"] == 1 and d["fuzzy_count"] == 1
+    reasons = {g["reason"] for g in d["groups"]}
+    assert reasons == {"exact_path", "fuzzy"}
+    exact = next(g for g in d["groups"] if g["reason"] == "exact_path")
+    assert {t["id"] for t in exact["tracks"]} == {"1", "2"}
+    assert exact["compared"]["file_path"] == "/lib/a.mp3"
+    fuzzy = next(g for g in d["groups"] if g["reason"] == "fuzzy")
+    assert {t["id"] for t in fuzzy["tracks"]} == {"3", "4"}
+    assert fuzzy["compared"]["title"] and fuzzy["compared"]["duration"]
+
+
+def test_dj_duplicates_excludes_streaming_entries(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", file_path="spotify:track:abc", title="Song", file_state="not_a_file"),
+        DJTRACK(id="2", file_path="spotify:track:abc", title="Song", file_state="not_a_file"),
+    ])
+    d = client.get("/api/dj/duplicates").json()
+    assert d["groups"] == [] and d["exact_count"] == 0 and d["fuzzy_count"] == 0
+
+
+def test_dj_duplicates_db_error_is_503(client, monkeypatch):
+    def boom():
+        raise RuntimeError("no db")
+    monkeypatch.setattr(web.rekordbox, "load_tracks", boom)
+    assert client.get("/api/dj/duplicates").status_code == 503
+
+
 def test_run_job_auto_imports_on_success(client, monkeypatch, tmp_path):
     lines = ["Total songs: 1\n", "[ExtractAudio] Destination: x.mp3\n"]
     monkeypatch.setattr(web.subprocess, "Popen", lambda *a, **k: FakeProc(lines, 0))
