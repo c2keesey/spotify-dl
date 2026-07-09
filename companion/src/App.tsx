@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ImportScreen from "@/screens/ImportScreen";
+import SetScreen from "@/screens/SetScreen";
 
 // The whole app is three offline screens with no URLs to deep-link, so screen
 // state is a plain discriminated union in useState — no router.
@@ -10,7 +11,7 @@ type Screen =
   | { name: "set"; stem: string }
   | { name: "track"; stem: string; trackId: string };
 
-// Placeholders until Task 8 (Set) / Task 9 (Track) land.
+// Placeholder until Task 9 (Track) lands.
 function ComingSoon({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <main className="grain min-h-dvh flex flex-col items-center justify-center p-6">
@@ -39,7 +40,13 @@ export default function App() {
     case "import":
       return <ImportScreen onOpenSet={(stem) => setScreen({ name: "set", stem })} />;
     case "set":
-      return <ComingSoon title="Set" onBack={() => setScreen({ name: "import" })} />;
+      return (
+        <SetScreen
+          stem={screen.stem}
+          onOpenTrack={(trackId) => setScreen({ name: "track", stem: screen.stem, trackId })}
+          onBack={() => setScreen({ name: "import" })}
+        />
+      );
     case "track":
       return <ComingSoon title="Track" onBack={() => setScreen({ name: "import" })} />;
   }
