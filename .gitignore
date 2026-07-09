@@ -63,3 +63,4 @@ spotify_dl/static/dist/
 frontend/node_modules/
 .claude/worktrees/
 .wt/
+sets/
