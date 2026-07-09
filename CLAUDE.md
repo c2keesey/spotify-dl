@@ -50,6 +50,19 @@ bd close <id>         # Complete work
 <!-- END BEADS INTEGRATION -->
 
 
+## Development Framework
+
+This project uses **superpowers** as its development framework. Follow the workflow:
+
+`brainstorming` → `writing-plans` → `subagent-driven-development` → `finishing-a-development-branch`
+
+- Specs live in `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, plans in `docs/superpowers/plans/`.
+- Track all work in beads (above), not in the plan's checkboxes alone.
+- Dispatch **implementers sequentially, one at a time.** Parallel implementers — even in isolated git worktrees — are not worth it here. File ownership boundaries force agents to route *around* the files they can't touch: they invent duplicate types, restructure state management to avoid a neighbor's file, and leave new endpoints unwired because the call site belongs to someone else. Every task's own diff passes review; the seams between them rot.
+- **Do** run reviewers in parallel with the next implementer. Reviews are read-only, never conflict, and are where nearly every real bug gets caught.
+- If a fan-out is ever justified, land the shared contract first — types, endpoint stubs, **and the call sites** — before dispatching. A stub that's already wired can't be left unwired.
+- Always finish with a whole-branch review. A per-task reviewer sees one diff and structurally cannot catch a missing integration.
+
 ## Build & Test
 
 ```bash
