@@ -736,6 +736,13 @@ _NOT_IMPORTED_MAX = 32                # the key is a user-supplied path; keep it
 _NOT_IMPORTED_LOCK = threading.Lock()
 
 
+def invalidate_not_imported_cache():
+    """An import changes what's left to import. Without this the status banner
+    keeps offering "Import N" (and an enabled button) for up to the TTL."""
+    with _NOT_IMPORTED_LOCK:
+        _NOT_IMPORTED_CACHE.clear()
+
+
 def _count_not_imported(folder, tracks):
     key = str(folder)
     now = time.monotonic()
@@ -845,7 +852,9 @@ def dj_import(req: DJImportRequest):
         raise HTTPException(400, "no such folder")
     files = sorted(str(f) for f in p.rglob("*.mp3"))
     try:
-        return rekordbox.import_files(files)
+        result = rekordbox.import_files(files)
+        invalidate_not_imported_cache()
+        return result
     except rekordbox.RekordboxRunning:
         raise HTTPException(409, "close rekordbox first")
 
@@ -1198,6 +1207,7 @@ def auto_import(output, files=None):
     if not files:
         return
     rekordbox.import_files(files)
+    invalidate_not_imported_cache()
 
 
 DIST_DIR = STATIC_DIR / "dist"

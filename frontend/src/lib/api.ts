@@ -10,13 +10,14 @@ export class ApiError extends Error {
   }
 }
 
+/** FastAPI puts the human-readable reason in `detail`; fall back to the status text. */
+async function detailOf(r: Response): Promise<string> {
+  try { return (await r.json()).detail ?? r.statusText; } catch { return r.statusText; }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, init);
-  if (!r.ok) {
-    let detail = r.statusText;
-    try { detail = (await r.json()).detail ?? detail; } catch { /* keep statusText */ }
-    throw new ApiError(r.status, detail);
-  }
+  if (!r.ok) throw new ApiError(r.status, await detailOf(r));
   return (await r.json()) as T;
 }
 
@@ -56,7 +57,21 @@ export const api = {
   /** Ranked candidates for what could play after the set's last slot. Read-only:
    *  it recommends, never reorders or adds — the user clicks to add a row. */
   djSuggest: (ids: string[]) => req<SuggestResult>("/api/dj/suggest", post({ ids })),
-  djExport: (name: string, ids: string[]) => req<{ playlist: string }>("/api/dj/export", post({ name, ids })),
+  /** Write the ordered set as a NEW rekordbox playlist. `set` is the on-disk
+   *  stem of the saved Crate set, so the server can record which playlist this
+   *  export produced (re-export makes another new playlist, never mutates one). */
+  djExport: (name: string, ids: string[], set?: string) =>
+    req<{ playlist: string; playlist_id: string }>("/api/dj/export", post({ name, ids, set })),
+  /** Portable exports. Neither touches master.db, so both work while rekordbox
+   *  is running -- which is the whole point of them. */
+  djExportM3u8: (name: string, ids: string[]) =>
+    req<{ path: string; name: string }>("/api/dj/export/m3u8", post({ name, ids })),
+  /** The XML document itself, for the browser to save. rekordbox imports it. */
+  djExportXml: async (name: string, ids: string[]) => {
+    const res = await fetch("/api/dj/export/xml", post({ name, ids }));
+    if (!res.ok) throw new ApiError(res.status, await detailOf(res));
+    return res.text();
+  },
   djDuplicates: () => req<DuplicatesResult>("/api/dj/duplicates"),
   // ---- saved sets (Crate's own files; safe while rekordbox is open) ----
   djSets: () => req<{ sets: SetSummary[] }>("/api/dj/sets").then((r) => r.sets),

@@ -1068,3 +1068,15 @@ def test_assets_blocks_traversal(client, monkeypatch, tmp_path):
     with pytest.raises(HTTPException) as exc:
         web.dist_assets("../index.html")
     assert exc.value.status_code == 404
+
+
+def test_import_invalidates_the_not_imported_cache(monkeypatch, tmp_path, client):
+    """After an import, the status banner must stop offering the same files.
+    Without invalidation it kept saying "Import N" for the cache's whole TTL."""
+    import time as _time
+    monkeypatch.setattr(web.rekordbox, "import_files",
+                        lambda paths: {"imported": list(paths), "skipped_duplicates": []})
+    web._NOT_IMPORTED_CACHE["/some/folder"] = (7, _time.monotonic())
+    r = client.post("/api/dj/import", json={"path": str(tmp_path)})
+    assert r.status_code == 200
+    assert web._NOT_IMPORTED_CACHE == {}, "import must clear the not-imported count"

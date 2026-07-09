@@ -36,7 +36,13 @@ export function SaveSetDialog({ tracks, setIds }: { tracks: DjTrack[]; setIds: s
   const inFlight = useRef(false);
 
   const save = useMutation({
-    mutationFn: () => api.djExport(name.trim(), setIds),
+    // Save the Crate set file first, then export with its stem. The m3u8 IS the
+    // artifact, and the stem is what lets the server record which rekordbox
+    // playlist this export produced (so the Sets library can show "exported").
+    mutationFn: async () => {
+      const { stem } = await api.djSaveSet(name.trim(), setIds);
+      return api.djExport(name.trim(), setIds, stem);
+    },
     onSuccess: () => {
       toast.success(`Saved as "${name.trim()}"`);
       setCooldown(true);
@@ -57,6 +63,26 @@ export function SaveSetDialog({ tracks, setIds }: { tracks: DjTrack[]; setIds: s
     },
   });
 
+  const exportM3u8 = useMutation({
+    mutationFn: () => api.djExportM3u8(name.trim(), setIds),
+    onSuccess: (r) => toast.success(`Wrote ${r.path}`),
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : "Export failed"),
+  });
+
+  const exportXml = useMutation({
+    mutationFn: () => api.djExportXml(name.trim(), setIds),
+    onSuccess: (xml) => {
+      const url = URL.createObjectURL(new Blob([xml], { type: "application/xml" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${name.trim()}.xml`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Downloaded rekordbox XML");
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : "Export failed"),
+  });
+
   function submit() {
     if (inFlight.current || save.isPending) return;
     if (name.trim().length === 0) return;
@@ -64,7 +90,8 @@ export function SaveSetDialog({ tracks, setIds }: { tracks: DjTrack[]; setIds: s
     save.mutate();
   }
 
-  const canSubmit = name.trim().length > 0 && !save.isPending && !cooldown;
+  const hasName = name.trim().length > 0;
+  const canSubmit = hasName && !save.isPending && !cooldown;
 
   return (
     <Dialog
@@ -119,11 +146,36 @@ export function SaveSetDialog({ tracks, setIds }: { tracks: DjTrack[]; setIds: s
           {locked && (
             <div className="flex items-center gap-2 rounded-md border border-vfd/40 bg-vfd/10 px-3 py-2 text-sm text-foreground">
               <LedLamp state="warn" />
-              <span>rekordbox is open — close rekordbox first, then save.</span>
+              <span>
+                rekordbox is open — close it first to write a playlist. The .m3u8 and
+                .xml exports below work either way.
+              </span>
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="sm:justify-between">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!hasName || exportM3u8.isPending}
+                onClick={() => exportM3u8.mutate()}
+                title="Portable playlist file — also opens in Serato and Traktor"
+              >
+                Export .m3u8
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!hasName || exportXml.isPending}
+                onClick={() => exportXml.mutate()}
+                title="rekordbox collection XML — import it from rekordbox's File menu"
+              >
+                Export .xml
+              </Button>
+            </div>
             <Button type="submit" disabled={!canSubmit}>
               {save.isPending ? "Saving…" : "Save"}
             </Button>
