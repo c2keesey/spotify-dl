@@ -61,6 +61,11 @@ excalidraw.log
 # Crate frontend
 spotify_dl/static/dist/
 frontend/node_modules/
+
+# Flightcase companion PWA
+companion/node_modules/
+companion/dist/
+companion/dev-dist/
 .claude/worktrees/
 .wt/
 sets/

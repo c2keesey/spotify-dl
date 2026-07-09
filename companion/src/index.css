@@ -1,0 +1,120 @@
+@import "@fontsource/chakra-petch/500.css";
+@import "@fontsource/chakra-petch/600.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* vintage instrument panel — dark is the designed-for mode */
+    --background: 80 6% 5%;          /* warm near-black, aged plastic */
+    --foreground: 75 8% 90%;
+    --card: 75 5% 8%;
+    --card-foreground: 75 8% 90%;
+    --popover: 75 5% 7%;
+    --popover-foreground: 75 8% 90%;
+    --primary: 145 70% 45%;          /* phosphor green */
+    --primary-foreground: 150 60% 6%;
+    --secondary: 75 5% 13%;
+    --secondary-foreground: 75 8% 85%;
+    --muted: 75 5% 12%;
+    --muted-foreground: 70 6% 55%;
+    --accent: 75 5% 14%;
+    --accent-foreground: 75 8% 90%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 75 6% 16%;
+    --input: 75 6% 16%;
+    --ring: 145 70% 45%;
+    --radius: 0.625rem;
+    /* crate-specific */
+    --led: 145 85% 55%;              /* lit phosphor */
+    --vfd: 35 100% 66%;              /* VFD amber */
+    --signal-red: 0 85% 62%;
+    --panel-bevel: 75 10% 22%;
+  }
+  .light {
+    --background: 48 25% 94%;        /* cream paper */
+    --foreground: 80 10% 12%;
+    --card: 48 20% 98%;
+    --card-foreground: 80 10% 12%;
+    --popover: 48 20% 98%;
+    --popover-foreground: 80 10% 12%;
+    --primary: 150 65% 32%;          /* green ink */
+    --primary-foreground: 48 25% 96%;
+    --secondary: 48 15% 88%;
+    --secondary-foreground: 80 10% 18%;
+    --muted: 48 15% 88%;
+    --muted-foreground: 75 8% 40%;
+    --accent: 48 15% 86%;
+    --accent-foreground: 80 10% 12%;
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 60 10% 78%;
+    --input: 60 10% 78%;
+    --ring: 150 65% 32%;
+    --led: 150 70% 38%;
+    --vfd: 30 90% 45%;
+    --signal-red: 0 70% 48%;
+    --panel-bevel: 48 20% 99%;
+  }
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background-image: radial-gradient(1100px 500px at 50% -180px, hsl(var(--led) / 0.06), transparent 70%);
+  }
+}
+
+@layer components {
+  /* film grain — subtle, never impairs contrast */
+  .grain::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 60;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  /* engraved panel label */
+  .panel-label {
+    @apply font-display uppercase tracking-[0.18em] text-xs text-muted-foreground;
+    text-shadow: 0 1px 0 hsl(0 0% 0% / 0.45);
+  }
+  /* scanlines for panel headers only */
+  .scanlines {
+    background-image: repeating-linear-gradient(0deg, transparent 0 2px, hsl(0 0% 0% / 0.12) 2px 3px);
+  }
+  /* 1px inner bevel like brushed panels */
+  .bevel { box-shadow: inset 0 1px 0 hsl(var(--panel-bevel) / 0.55); }
+  /* keyboard focus for the SVG key-wheel segments (ring/box-shadow don't apply to
+     SVG children, so use an outline the segment's bbox can carry) */
+  .wheel-seg { outline: none; }
+  .wheel-seg:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+  .led-glow { box-shadow: 0 0 6px 1px hsl(var(--led) / 0.55); }
+  .press:active { transform: translateY(1px); }
+}
+
+/* power-on: panels rise, LED lamps blink once (CSS only) */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ledBlink {
+  0%, 100% { opacity: 1; }
+  30% { opacity: 0.2; }
+  60% { opacity: 1; }
+}
+/* indeterminate VU chase: a comet-like 4-block band scanning left→right.
+   Each block is phase-shifted by a negative delay so the lit window travels.
+   Dies under prefers-reduced-motion via the global animation kill-switch. */
+@keyframes meterChase {
+  0%   { opacity: 1;    box-shadow: 0 0 6px 1px hsl(var(--led) / 0.7); }
+  6%   { opacity: 0.85; box-shadow: 0 0 4px 0 hsl(var(--led) / 0.5); }
+  13%  { opacity: 0.45; box-shadow: 0 0 2px 0 hsl(var(--led) / 0.25); }
+  18%, 100% { opacity: 0.12; box-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
