@@ -13,22 +13,19 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { X } from "lucide-react";
+import { X, Undo2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/queries";
 import { camelotColor } from "@/lib/camelot";
 import { cn } from "@/lib/utils";
+import { formatClock, cumulativeStarts, totalRuntime } from "@/lib/format";
 import type { DjTrack, Rating } from "@/lib/types";
-import { seamFor } from "./seams";
+import { seamFor, seamTooltip } from "./seams";
+import { useSetState } from "./useSetState";
 import { SaveSetDialog } from "./SaveSetDialog";
-
-const SEAM_TEXT: Record<Rating, string> = {
-  good: "harmonic + tempo match",
-  ok: "workable — watch the blend",
-  clash: "key or tempo clash",
-};
 
 const SEAM_COLOR: Record<Rating, string> = {
   good: "hsl(var(--led))",
@@ -36,10 +33,14 @@ const SEAM_COLOR: Record<Rating, string> = {
   clash: "hsl(var(--signal-red))",
 };
 
-/** Horizontal signal light wedged between two channel strips. Dim (no color)
- * while the compatibility read is loading/stale, so a wrong color never shows. */
-function Seam({ rating, dim }: { rating: Rating | null; dim: boolean }) {
+/** Horizontal signal light wedged between two channel strips. Color encodes
+ * compatibility, but the tooltip (hover *and* keyboard focus) carries the full
+ * meaning — relation, both Camelot keys, BPM delta — so color is never the sole
+ * signal. Dim (no color) while the read is loading/stale. */
+function Seam({ rating, dim, from, to }: { rating: Rating | null; dim: boolean; from: DjTrack; to: DjTrack }) {
   const color = rating && !dim ? SEAM_COLOR[rating] : undefined;
+  const delta = from.bpm != null && to.bpm != null ? to.bpm - from.bpm : null;
+  const label = rating ? seamTooltip(rating, from.camelot, to.camelot, delta) : null;
   const line = (
     <span
       className={cn("block h-[2px] w-[46px] rounded-full", (!rating || dim) && "bg-muted-foreground/25")}
@@ -48,13 +49,15 @@ function Seam({ rating, dim }: { rating: Rating | null; dim: boolean }) {
   );
   return (
     <div className="flex items-center justify-center py-0.5">
-      {rating && !dim ? (
-        <TooltipProvider>
+      {label ? (
+        <TooltipProvider delayDuration={150}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span tabIndex={0}>{line}</span>
+              <span tabIndex={0} className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {line}
+              </span>
             </TooltipTrigger>
-            <TooltipContent>{SEAM_TEXT[rating]}</TooltipContent>
+            <TooltipContent className="font-mono text-xs">{label}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       ) : (
@@ -65,8 +68,19 @@ function Seam({ rating, dim }: { rating: Rating | null; dim: boolean }) {
 }
 
 /** One draggable channel strip. The whole slot is the drag handle (grip dots on
- * the left signal the affordance); the remove × sits outside the drag gesture. */
-function Slot({ track, index, onRemove }: { track: DjTrack; index: number; onRemove: (id: string) => void }) {
+ * the left signal the affordance); the remove × sits outside the drag gesture.
+ * `start` is the cumulative time at which this slot begins playing. */
+function Slot({
+  track,
+  index,
+  start,
+  onRemove,
+}: {
+  track: DjTrack;
+  index: number;
+  start: number;
+  onRemove: (id: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: track.id });
   return (
     <div
@@ -84,8 +98,11 @@ function Slot({ track, index, onRemove }: { track: DjTrack; index: number; onRem
           <span key={i} className="h-[3px] w-[3px] rounded-full bg-current" />
         ))}
       </span>
-      <span className="w-5 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
-        {index + 1}
+      <span className="flex w-10 shrink-0 flex-col items-end leading-tight">
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+        <span className="font-mono text-[10px] tabular-nums text-muted-foreground/60" title="starts at">
+          {formatClock(start)}
+        </span>
       </span>
       {track.camelot ? (
         <Badge className="shrink-0 border-transparent font-mono text-white" style={{ background: camelotColor(track.camelot) }}>
@@ -125,9 +142,10 @@ function Chip({ children }: { children: ReactNode }) {
 /**
  * The DJ set rail — her workspace. Tracks stack as physical channel strips in
  * the *manual* order she dragged them into; there is NO auto-ordering. Between
- * strips, thin seam lights annotate harmonic/tempo compatibility (green/amber/
- * red), sourced from a `djCompat` read that refetches on every order change and
- * renders dim while in flight. A Save dialog exports the order to rekordbox.
+ * strips, thin seam lights annotate harmonic/tempo compatibility, each with a
+ * hover/focus tooltip. Summary chips carry count, BPM range, key spread and
+ * total runtime; each slot shows its cumulative start time. Undo (⌘Z + button)
+ * and Clear act on set membership/order only.
  */
 export function SetRail({
   setIds,
@@ -140,6 +158,7 @@ export function SetRail({
   onRemove: (id: string) => void;
   onReorder: (from: number, to: number) => void;
 }) {
+  const { undo, canUndo, clear } = useSetState();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const compatQ = useQuery({
@@ -154,10 +173,13 @@ export function SetRail({
   const summary = useMemo(() => {
     const bpms = tracks.map((t) => t.bpm).filter((b): b is number => b != null);
     const keys = new Set(tracks.map((t) => t.camelot).filter(Boolean));
+    const durations = tracks.map((t) => t.duration);
     return {
       min: bpms.length ? Math.min(...bpms) : null,
       max: bpms.length ? Math.max(...bpms) : null,
       keys: keys.size,
+      runtime: totalRuntime(durations),
+      starts: cumulativeStarts(durations),
     };
   }, [tracks]);
 
@@ -173,11 +195,32 @@ export function SetRail({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Chip>{tracks.length} {tracks.length === 1 ? "track" : "tracks"}</Chip>
+        {summary.runtime > 0 && <Chip>{formatClock(summary.runtime)}</Chip>}
         {summary.min != null && (
           <Chip>{summary.min.toFixed(1)}–{summary.max!.toFixed(1)} BPM</Chip>
         )}
         {summary.keys > 0 && <Chip>{summary.keys} {summary.keys === 1 ? "key" : "keys"}</Chip>}
         <div className="flex-1" />
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (⌘Z)"
+        >
+          <Undo2 className="h-3.5 w-3.5" /> Undo
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={clear}
+          disabled={tracks.length === 0}
+          title="Clear the set"
+        >
+          <Trash2 className="h-3.5 w-3.5" /> Clear
+        </Button>
         <SaveSetDialog tracks={tracks} setIds={setIds} />
       </div>
 
@@ -191,8 +234,10 @@ export function SetRail({
             <div>
               {tracks.map((t, i) => (
                 <div key={t.id}>
-                  <Slot track={t} index={i} onRemove={onRemove} />
-                  {i < tracks.length - 1 && <Seam rating={seamFor(ratings, i)} dim={dim} />}
+                  <Slot track={t} index={i} start={summary.starts[i] ?? 0} onRemove={onRemove} />
+                  {i < tracks.length - 1 && (
+                    <Seam rating={seamFor(ratings, i)} dim={dim} from={t} to={tracks[i + 1]} />
+                  )}
                 </div>
               ))}
             </div>

@@ -1,5 +1,5 @@
 import type { Rating } from "@/lib/types";
-import { seamFor } from "./seams";
+import { seamFor, seamTooltip } from "./seams";
 
 // 4 tracks → 3 gaps → ratings has 3 entries; seam i lives between track i and i+1.
 const ratings: Rating[] = ["good", "ok", "clash"];
@@ -20,4 +20,13 @@ it("returns null for negative indices", () => {
 
 it("returns null against an empty ratings list", () => {
   expect(seamFor([], 0)).toBeNull();
+});
+
+it("tooltip names the relation, both Camelot keys, and the signed BPM delta", () => {
+  expect(seamTooltip("good", "8A", "9A", 6)).toBe("Harmonic + tempo match · 8A → 9A · +6 BPM");
+  expect(seamTooltip("clash", "8A", "2B", -3.5)).toBe("Key or tempo clash · 8A → 2B · -3.5 BPM");
+});
+
+it("tooltip degrades gracefully when a key or BPM is unknown", () => {
+  expect(seamTooltip("ok", null, "5A", null)).toBe("Workable — watch the blend · — → 5A · BPM —");
 });

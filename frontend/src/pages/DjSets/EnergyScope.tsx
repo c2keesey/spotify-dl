@@ -1,114 +1,64 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { DjTrack } from "@/lib/types";
+import { buildChart, CHART, type Chart, type EnergyDatum } from "@/lib/chart";
 
 /**
- * Session-level energy cache (track id → LUFS | null). Module-scoped so it
- * survives remounts and set edits within a session: measured loudness is only
- * fetched once per track, and a `null` marks a file we already tried and failed
- * to measure (so we don't hammer the backend re-asking for it). Faithful port
- * of the v1 `energyCache`.
+ * Session-level energy cache (track id → {LUFS｜null, why}). Module-scoped so it
+ * survives remounts and set edits within a session: loudness is fetched once per
+ * track, and the `state` records *why* a file has no value (moved/deleted vs
+ * analysis failure) so the scope can explain an absent overlay instead of going
+ * blank. Faithful evolution of the v1 `energyCache`.
  */
-const energyCache = new Map<string, number | null>();
+const energyCache = new Map<string, EnergyDatum>();
 
-const W = 420;
-const H = 150;
-const PAD = 26;
-
-type ScopeState =
-  | { kind: "empty"; message: string }
-  | { kind: "measuring" }
-  | {
-      kind: "chart";
-      areaPoints: string;
-      energyPoints: string;
-      bpmPoints: string;
-      dots: { cx: number; cy: number; title: string }[];
-    };
-
-function buildChart(tracks: DjTrack[]): ScopeState {
-  const es = tracks.map((t) => (energyCache.has(t.id) ? energyCache.get(t.id)! : null));
-  const known = es.filter((e): e is number => e != null);
-  if (known.length < 2) {
-    return { kind: "empty", message: "Not enough energy data for these files." };
-  }
-
-  const lo = Math.min(...known) - 1;
-  const hi = Math.max(...known) + 1;
-  const bpms = tracks.map((t) => t.bpm).filter((b): b is number => !!b);
-  const blo = Math.min(...bpms) - 2;
-  const bhi = Math.max(...bpms) + 2;
-
-  const x = (i: number) => PAD + (i / (tracks.length - 1)) * (W - 2 * PAD);
-  const yE = (e: number) => H - PAD - ((e - lo) / (hi - lo)) * (H - 2 * PAD);
-  const yB = (b: number) => H - PAD - ((b - blo) / (bhi - blo)) * (H - 2 * PAD);
-
-  const energyPoints = es
-    .map((e, i) => (e != null ? `${x(i)},${yE(e)}` : null))
-    .filter(Boolean)
-    .join(" ");
-  const bpmPoints = tracks
-    .map((t, i) => (t.bpm ? `${x(i)},${yB(t.bpm)}` : null))
-    .filter(Boolean)
-    .join(" ");
-  const areaPoints = `${PAD},${H - PAD} ${energyPoints} ${x(tracks.length - 1)},${H - PAD}`;
-  const dots = es
-    .map((e, i) =>
-      e != null
-        ? { cx: x(i), cy: yE(e), title: `${tracks[i].title}: ${e.toFixed(1)} LUFS` }
-        : null,
-    )
-    .filter((d): d is { cx: number; cy: number; title: string } => d != null);
-
-  return { kind: "chart", areaPoints, energyPoints, bpmPoints, dots };
-}
+const { W, H, PAD } = CHART;
 
 /**
- * The energy oscilloscope — the set's loudness curve drawn as a phosphor-green
- * trace glowing over a faint grid, an amber dashed BPM trace behind it. Loudness
- * is measured server-side on demand (`api.djEnergy`) and cached per session.
+ * The scope. BPM is the star and renders from BPM alone (every rekordbox track
+ * has one) — a solid phosphor trace with per-transition deltas and a real-BPM
+ * axis, breaking cleanly across any track with no BPM. Loudness, when measured,
+ * rides behind as a faint amber overlay; when it can't be measured the scope
+ * says why rather than disappearing.
  *
  * A render-generation token guards the async measure: each effect run captures
  * the incremented counter, and a completing fetch only writes state if its token
- * is still current. Rapid set edits therefore can't let a stale chart overwrite
- * a newer one — the last render always wins (closes sdl-697).
+ * is still current, so rapid set edits can't let a stale paint win (sdl-697).
  */
 export function EnergyScope({ tracks }: { tracks: DjTrack[] }) {
-  const [state, setState] = useState<ScopeState>({
-    kind: "empty",
-    message: "Energy curve appears with 2+ tracks.",
-  });
+  const [chart, setChart] = useState<Chart>(() => buildChart(tracks, energyCache));
+  const [measuring, setMeasuring] = useState(false);
   const renderToken = useRef(0);
   const ids = tracks.map((t) => t.id).join(",");
 
   useEffect(() => {
     const token = ++renderToken.current;
-
-    if (tracks.length < 2) {
-      setState({ kind: "empty", message: "Energy curve appears with 2+ tracks." });
-      return;
-    }
+    setChart(buildChart(tracks, energyCache));
 
     const missing = tracks.filter((t) => !energyCache.has(t.id)).map((t) => t.id);
     if (missing.length === 0) {
-      setState(buildChart(tracks));
+      setMeasuring(false);
       return;
     }
 
-    setState({ kind: "measuring" });
+    setMeasuring(true);
     (async () => {
       try {
-        const { energy } = await api.djEnergy(missing);
-        // Cache only ids the server reported; omitted ids stay uncached and get
-        // re-measured next render — matches the v1 Object.assign flow.
-        for (const [id, value] of Object.entries(energy)) energyCache.set(id, value);
+        const { energy, state } = await api.djEnergy(missing);
+        for (const id of missing) {
+          energyCache.set(id, {
+            value: energy[id] ?? null,
+            state: state[id] ?? "failed",
+          });
+        }
       } catch {
-        // Both !ok (ApiError) and network throws land here: mark every requested
-        // id as unmeasurable so we don't re-ask this session.
-        for (const id of missing) energyCache.set(id, null);
+        // ApiError and network throws both land here: mark every requested id
+        // as a failed measure so we don't re-ask this session.
+        for (const id of missing) energyCache.set(id, { value: null, state: "failed" });
       }
       if (renderToken.current !== token) return; // a newer render superseded us
-      setState(buildChart(tracks));
+      setMeasuring(false);
+      setChart(buildChart(tracks, energyCache));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids]);
@@ -123,58 +73,112 @@ export function EnergyScope({ tracks }: { tracks: DjTrack[] }) {
           "repeating-linear-gradient(90deg, hsl(var(--led) / 0.08) 0 1px, transparent 1px 24px)",
       }}
     >
-      {state.kind === "empty" || state.kind === "measuring" ? (
+      {chart.kind === "empty" ? (
         <div className="flex h-[150px] items-center justify-center px-4 text-center font-mono text-xs uppercase tracking-wider text-muted-foreground">
-          {state.kind === "measuring" ? "MEASURING…" : state.message}
+          {chart.message}
         </div>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Set energy curve">
-          <defs>
-            <filter id="scope-glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
+        <>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Set BPM curve">
+            <defs>
+              <filter id="scope-glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="2.5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
 
-          <polyline
-            points={state.bpmPoints}
-            fill="none"
-            stroke="hsl(var(--vfd))"
-            strokeWidth={1.2}
-            strokeDasharray="4 3"
-            opacity={0.75}
-          />
-          <polygon points={state.areaPoints} fill="hsl(var(--led))" opacity={0.1} />
-          <polyline
-            points={state.energyPoints}
-            fill="none"
-            stroke="hsl(var(--led))"
-            strokeWidth={2}
-            filter="url(#scope-glow)"
-          />
-          {state.dots.map((d, i) => (
-            <circle key={i} cx={d.cx} cy={d.cy} r={3.5} fill="hsl(var(--led))">
-              <title>{d.title}</title>
-            </circle>
-          ))}
+            {/* BPM axis: labeled with the true tempo range. */}
+            <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="hsl(var(--border))" strokeWidth={1} />
+            {[chart.axis.hi, chart.axis.lo].map((v, i) => (
+              <text
+                key={i}
+                x={PAD - 4}
+                y={(i === 0 ? chart.axis.hiY : chart.axis.loY) + 3}
+                fontSize={9}
+                fontFamily="'IBM Plex Mono', monospace"
+                textAnchor="end"
+                fill="hsl(var(--muted-foreground))"
+              >
+                {v.toFixed(0)}
+              </text>
+            ))}
 
-          <text x={PAD} y={12} fontSize={10} fontFamily="'IBM Plex Mono', monospace" fill="hsl(var(--muted-foreground))">
-            ENERGY (LOUDNESS)
-          </text>
-          <text
-            x={W - PAD}
-            y={12}
-            fontSize={10}
-            fontFamily="'IBM Plex Mono', monospace"
-            textAnchor="end"
-            fill="hsl(var(--vfd))"
-          >
-            - - BPM
-          </text>
-        </svg>
+            {/* Energy overlay, only when 2+ files measured. */}
+            {chart.energy.shown && (
+              <>
+                <polygon points={chart.energy.area} fill="hsl(var(--vfd))" opacity={0.08} />
+                <polyline
+                  points={chart.energy.points}
+                  fill="none"
+                  stroke="hsl(var(--vfd))"
+                  strokeWidth={1.2}
+                  strokeDasharray="4 3"
+                  opacity={0.7}
+                />
+                {chart.energy.dots.map((d, i) => (
+                  <circle key={i} cx={d.cx} cy={d.cy} r={2.5} fill="hsl(var(--vfd))" opacity={0.8}>
+                    <title>{d.title}</title>
+                  </circle>
+                ))}
+              </>
+            )}
+
+            {/* BPM trace — one polyline per unbroken run, so nulls break the line. */}
+            {chart.segments.map((pts, i) => (
+              <polyline
+                key={i}
+                points={pts}
+                fill="none"
+                stroke="hsl(var(--led))"
+                strokeWidth={2}
+                filter="url(#scope-glow)"
+              />
+            ))}
+            {chart.dots.map((d, i) => (
+              <circle key={i} cx={d.cx} cy={d.cy} r={3.5} fill="hsl(var(--led))">
+                <title>{d.title}</title>
+              </circle>
+            ))}
+            {chart.deltas.map((d, i) => (
+              <text
+                key={i}
+                x={d.x}
+                y={d.y}
+                fontSize={9}
+                fontFamily="'IBM Plex Mono', monospace"
+                textAnchor="middle"
+                fill={d.sign === 0 ? "hsl(var(--muted-foreground))" : "hsl(var(--led))"}
+              >
+                {d.label}
+              </text>
+            ))}
+
+            <text x={PAD} y={12} fontSize={10} fontFamily="'IBM Plex Mono', monospace" fill="hsl(var(--led))">
+              BPM
+            </text>
+            {chart.energy.shown && (
+              <text
+                x={W - PAD}
+                y={12}
+                fontSize={10}
+                fontFamily="'IBM Plex Mono', monospace"
+                textAnchor="end"
+                fill="hsl(var(--vfd))"
+              >
+                - - ENERGY
+              </text>
+            )}
+          </svg>
+
+          {!chart.energy.shown && chart.energy.reason && (
+            <div className="px-2 pb-1 pt-0.5 text-center font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+              {measuring ? "MEASURING ENERGY…" : chart.energy.reason}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

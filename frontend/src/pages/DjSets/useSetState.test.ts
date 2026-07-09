@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
+import { beforeEach } from "vitest";
 import type { DjTrack } from "@/lib/types";
-import { useSetState } from "./useSetState";
+import { useSetState, __resetForTest } from "./useSetState";
 
 const track = (id: string, over: Partial<DjTrack> = {}): DjTrack => ({
   id,
@@ -17,6 +18,8 @@ const track = (id: string, over: Partial<DjTrack> = {}): DjTrack => ({
   playlists: [],
   ...over,
 });
+
+beforeEach(() => __resetForTest());
 
 it("adds tracks and dedupes by id", () => {
   const { result } = renderHook(() => useSetState());
@@ -47,9 +50,39 @@ it("reorder(0, 2) moves the first track to third", () => {
 
 it("keeps set tracks resolvable after the source record is gone (cache survival)", () => {
   const { result } = renderHook(() => useSetState());
-  // Simulate the track being visible in the browser only at add-time.
   act(() => result.current.add(track("a", { title: "Ephemeral" })));
-  // A later browser filter would drop the row, but the set still resolves it.
   expect(result.current.tracks).toHaveLength(1);
   expect(result.current.tracks[0].title).toBe("Ephemeral");
+});
+
+it("undo reverses add / remove / reorder / clear, one step at a time", () => {
+  const { result } = renderHook(() => useSetState());
+  act(() => result.current.add(track("a")));
+  act(() => result.current.add(track("b")));
+  act(() => result.current.reorder(0, 1)); // -> [b, a]
+  expect(result.current.setIds).toEqual(["b", "a"]);
+  act(() => result.current.undo()); // undo reorder -> [a, b]
+  expect(result.current.setIds).toEqual(["a", "b"]);
+  act(() => result.current.clear()); // -> []
+  expect(result.current.setIds).toEqual([]);
+  act(() => result.current.undo()); // undo clear -> [a, b]
+  expect(result.current.setIds).toEqual(["a", "b"]);
+});
+
+it("bounds the undo stack at 20 steps", () => {
+  const { result } = renderHook(() => useSetState());
+  // 25 adds => 25 undo-able steps, but the stack only keeps the last 20.
+  for (let i = 0; i < 25; i++) act(() => result.current.add(track(`t${i}`)));
+  expect(result.current.setIds).toHaveLength(25);
+  for (let i = 0; i < 25; i++) act(() => result.current.undo());
+  // Only 20 undos land; the 5 oldest steps are unreachable.
+  expect(result.current.canUndo).toBe(false);
+  expect(result.current.setIds).toHaveLength(5);
+});
+
+it("clear is a no-op with nothing to undo when the set is already empty", () => {
+  const { result } = renderHook(() => useSetState());
+  act(() => result.current.clear());
+  expect(result.current.canUndo).toBe(false);
+  expect(result.current.setIds).toEqual([]);
 });

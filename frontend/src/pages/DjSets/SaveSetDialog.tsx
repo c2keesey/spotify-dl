@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -29,11 +29,18 @@ export function SaveSetDialog({ tracks, setIds }: { tracks: DjTrack[]; setIds: s
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [locked, setLocked] = useState(false); // 409: rekordbox open
+  const [cooldown, setCooldown] = useState(false); // brief post-save disable
+  // Synchronous guard: a double-click fires both mousedowns before React can
+  // re-render `save.isPending`, so without this the second click posts a second
+  // export and rekordbox uniquifies it to "… (2)" (sdl-jzw).
+  const inFlight = useRef(false);
 
   const save = useMutation({
     mutationFn: () => api.djExport(name.trim(), setIds),
     onSuccess: () => {
       toast.success(`Saved as "${name.trim()}"`);
+      setCooldown(true);
+      setTimeout(() => setCooldown(false), 800);
       setOpen(false);
       setName("");
       setLocked(false);
@@ -45,9 +52,19 @@ export function SaveSetDialog({ tracks, setIds }: { tracks: DjTrack[]; setIds: s
         toast.error(e instanceof ApiError ? e.detail : "Export failed");
       }
     },
+    onSettled: () => {
+      inFlight.current = false;
+    },
   });
 
-  const canSubmit = name.trim().length > 0 && !save.isPending;
+  function submit() {
+    if (inFlight.current || save.isPending) return;
+    if (name.trim().length === 0) return;
+    inFlight.current = true;
+    save.mutate();
+  }
+
+  const canSubmit = name.trim().length > 0 && !save.isPending && !cooldown;
 
   return (
     <Dialog
@@ -73,7 +90,7 @@ export function SaveSetDialog({ tracks, setIds }: { tracks: DjTrack[]; setIds: s
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (canSubmit) save.mutate();
+            submit();
           }}
           className="space-y-4"
         >
