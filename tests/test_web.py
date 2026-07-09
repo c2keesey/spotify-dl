@@ -522,6 +522,157 @@ def test_dj_duplicates_db_error_is_503(client, monkeypatch):
     assert client.get("/api/dj/duplicates").status_code == 503
 
 
+# ---- dj: audio (THE security surface — id resolves to a path, never path-in) ----
+#
+# Every test here treats the endpoint as hostile input: the {track_id} must only
+# ever be used as a lookup key against the collection. A path can never reach
+# open(): an unknown id is a 404, and a resolved value that is not a real
+# absolute file (spotify: URI, missing file, unmounted volume) is a 404.
+
+def _audio_track(tmp_path, name="a.mp3", data=None):
+    """Write a fake audio file and return (path, bytes)."""
+    if data is None:
+        data = b"ID3" + bytes(range(256)) * 3   # 771 deterministic bytes
+    f = tmp_path / name
+    f.write_bytes(data)
+    return str(f), data
+
+
+def test_dj_audio_streams_full_file(client, monkeypatch, tmp_path):
+    path, data = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    r = client.get("/api/dj/audio/1")
+    assert r.status_code == 200
+    assert r.content == data
+    assert r.headers["accept-ranges"] == "bytes"
+    assert r.headers["content-type"] == "audio/mpeg"
+    assert r.headers["content-length"] == str(len(data))
+
+
+def test_dj_audio_range_request_is_206(client, monkeypatch, tmp_path):
+    path, data = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    r = client.get("/api/dj/audio/1", headers={"Range": "bytes=10-19"})
+    assert r.status_code == 206
+    assert r.content == data[10:20]
+    assert r.headers["content-range"] == f"bytes 10-19/{len(data)}"
+    assert r.headers["content-length"] == "10"
+    assert r.headers["accept-ranges"] == "bytes"
+
+
+def test_dj_audio_suffix_range(client, monkeypatch, tmp_path):
+    path, data = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    r = client.get("/api/dj/audio/1", headers={"Range": "bytes=-16"})
+    assert r.status_code == 206
+    assert r.content == data[-16:]
+    n = len(data)
+    assert r.headers["content-range"] == f"bytes {n - 16}-{n - 1}/{n}"
+
+
+def test_dj_audio_open_ended_range(client, monkeypatch, tmp_path):
+    path, data = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    r = client.get("/api/dj/audio/1", headers={"Range": "bytes=500-"})
+    assert r.status_code == 206
+    assert r.content == data[500:]
+    n = len(data)
+    assert r.headers["content-range"] == f"bytes 500-{n - 1}/{n}"
+
+
+def test_dj_audio_range_beyond_eof_is_416(client, monkeypatch, tmp_path):
+    path, data = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    r = client.get("/api/dj/audio/1", headers={"Range": "bytes=999999-1000000"})
+    assert r.status_code == 416
+    assert r.headers["content-range"] == f"bytes */{len(data)}"
+
+
+def test_dj_audio_absurd_suffix_range_is_416(client, monkeypatch, tmp_path):
+    path, data = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    # a zero-length suffix is unsatisfiable, never a crash
+    r = client.get("/api/dj/audio/1", headers={"Range": "bytes=-0"})
+    assert r.status_code == 416
+
+
+def test_dj_audio_garbage_range_falls_back_to_full(client, monkeypatch, tmp_path):
+    path, data = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    # a malformed Range is ignored (server MAY ignore) — full 200, never a 500
+    r = client.get("/api/dj/audio/1", headers={"Range": "bytes=abc"})
+    assert r.status_code == 200
+    assert r.content == data
+
+
+def test_dj_audio_unknown_id_is_404(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [])
+    assert client.get("/api/dj/audio/1").status_code == 404
+
+
+def test_dj_audio_traversal_id_never_opens_a_file(client, monkeypatch, tmp_path):
+    """An id shaped like a path traversal is only ever a dict-miss → 404. It is
+    never joined to a directory or opened. Belt and suspenders: even a url-encoded
+    traversal and a raw one both 404."""
+    path, _ = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    assert client.get("/api/dj/audio/..%2F..%2Fetc%2Fpasswd").status_code == 404
+    assert client.get("/api/dj/audio/....//etc/passwd").status_code == 404
+
+
+def test_dj_audio_ignores_client_supplied_path_query(client, monkeypatch, tmp_path):
+    """A path smuggled in as a query param is never honored — the file served is
+    always the collection's path for the resolved id."""
+    path, data = _audio_track(tmp_path)
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=path)])
+    r = client.get("/api/dj/audio/1", params={"path": "/etc/passwd"})
+    assert r.status_code == 200
+    assert r.content == data
+
+
+def test_dj_audio_spotify_uri_entry_is_404(client, monkeypatch):
+    """A streaming (spotify:) entry resolves to a non-file path — never opened."""
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", file_path="spotify:track:abc", file_state="not_a_file")])
+    assert client.get("/api/dj/audio/1").status_code == 404
+
+
+def test_dj_audio_missing_file_is_404(client, monkeypatch, tmp_path):
+    """A real absolute path whose file is gone from disk → clean 404, no traceback."""
+    gone = str(tmp_path / "gone.mp3")
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", file_path=gone, file_state="missing")])
+    assert client.get("/api/dj/audio/1").status_code == 404
+
+
+def test_dj_audio_content_type_by_extension(client, monkeypatch, tmp_path):
+    cases = {"a.mp3": "audio/mpeg", "a.aiff": "audio/aiff", "a.wav": "audio/wav",
+             "a.m4a": "audio/mp4", "a.flac": "audio/flac"}
+    for name, ctype in cases.items():
+        path, _ = _audio_track(tmp_path, name=name)
+        monkeypatch.setattr(web.rekordbox, "load_tracks",
+                            lambda p=path: [DJTRACK(id="1", file_path=p)])
+        r = client.get("/api/dj/audio/1")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == ctype, name
+
+
+def test_dj_audio_db_error_is_503(client, monkeypatch):
+    def boom():
+        raise RuntimeError("no db")
+    monkeypatch.setattr(web.rekordbox, "load_tracks", boom)
+    assert client.get("/api/dj/audio/1").status_code == 503
+
+
 def test_run_job_auto_imports_on_success(client, monkeypatch, tmp_path):
     lines = ["Total songs: 1\n", "[ExtractAudio] Destination: x.mp3\n"]
     monkeypatch.setattr(web.subprocess, "Popen", lambda *a, **k: FakeProc(lines, 0))

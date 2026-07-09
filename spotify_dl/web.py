@@ -22,8 +22,8 @@ from pathlib import Path
 import spotipy
 import uvicorn
 from dotenv import dotenv_values
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
@@ -918,6 +918,110 @@ def dj_export_xml(req: DJExportRequest):
         content=xml, media_type="application/xml",
         headers={"Content-Disposition":
                  f'attachment; filename="{setfile._safe_name(name)}.xml"'})
+
+
+# ---- audition (stream a collection track's audio; THE security surface) ----
+#
+# The {track_id} is resolved against the rekordbox collection and the file we
+# stream is ALWAYS the collection's stored file_path for that id. The client
+# value is only ever a dict key — never joined to a directory, decoded into a
+# path, or opened. So no path a client sends can reach open(): an unknown id is
+# a 404, and a resolved value that is not a real, present, absolute file
+# (spotify: URIs, missing files, unmounted volumes) is a 404. There is no query
+# param, fallback, or "convenience" path input anywhere in this handler.
+
+AUDIO_CONTENT_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".flac": "audio/flac",
+}
+_AUDIO_CHUNK = 64 * 1024
+
+
+def _audio_content_type(path):
+    return AUDIO_CONTENT_TYPES.get(Path(path).suffix.lower(), "application/octet-stream")
+
+
+def _parse_range(header, file_size):
+    """Parse a single-range `Range` header against `file_size`.
+
+    Returns an inclusive (start, end), the string "unsatisfiable" (→ 416), or
+    None to ignore the header and serve the whole file. Handles suffix
+    (`bytes=-500`) and open-ended (`bytes=500-`) ranges. Malformed input is
+    ignored rather than raising."""
+    if not header:
+        return None
+    header = header.strip()
+    if not header.startswith("bytes=") or "," in header:  # multi-range: serve whole
+        return None
+    spec = header[len("bytes="):].strip()
+    if "-" not in spec:
+        return None
+    a, _, b = spec.partition("-")
+    a, b = a.strip(), b.strip()
+    try:
+        if a == "":                       # suffix: last N bytes
+            length = int(b)
+            if length <= 0:
+                return "unsatisfiable"
+            start, end = max(0, file_size - length), file_size - 1
+        else:
+            start = int(a)
+            end = int(b) if b else file_size - 1
+            end = min(end, file_size - 1)
+    except ValueError:
+        return None
+    if start < 0 or start > end or start >= file_size:
+        return "unsatisfiable"
+    return start, end
+
+
+def _stream_file(path, start, end):
+    """Yield bytes [start, end] inclusive, seeking so playback need not buffer
+    from 0. Bounded reads so a large file never lands wholly in memory."""
+    with open(path, "rb") as f:
+        f.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            chunk = f.read(min(_AUDIO_CHUNK, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+@app.get("/api/dj/audio/{track_id}")
+def dj_audio(track_id: str, request: Request):
+    """Stream a collection track's audio by rekordbox content id, with HTTP range
+    support so the browser can seek. See the module comment above for the
+    security invariant: the id is a lookup key, never a path."""
+    by_id = {t["id"]: t for t in _dj_tracks_or_503()}
+    track = by_id.get(track_id)
+    if track is None:
+        raise HTTPException(404, "unknown track")
+    path = track["file_path"]
+    # Only a real, present, absolute file is ever opened. isfile() is the guard
+    # that also rejects a directory (file_state accepts one via os.path.exists).
+    if rekordbox.file_state(path) != "present" or not os.path.isfile(path):
+        raise HTTPException(404, "audio file not available")
+    file_size = os.path.getsize(path)
+    headers = {"Accept-Ranges": "bytes"}
+    rng = _parse_range(request.headers.get("range"), file_size)
+    if rng == "unsatisfiable":
+        return Response(status_code=416,
+                        headers={**headers, "Content-Range": f"bytes */{file_size}"})
+    if rng is None:
+        start, end, status = 0, file_size - 1, 200
+    else:
+        (start, end), status = rng, 206
+        headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    headers["Content-Length"] = str(max(0, end - start + 1))
+    return StreamingResponse(
+        _stream_file(path, start, end), status_code=status,
+        media_type=_audio_content_type(path), headers=headers)
 
 
 def auto_import(output, files=None):
