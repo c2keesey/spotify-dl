@@ -23,17 +23,18 @@ import spotipy
 import uvicorn
 from dotenv import dotenv_values
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
 
-from spotify_dl import dj, rekordbox
+from spotify_dl import dj, rekordbox, setfile
 from spotify_dl.spotify import get_item_name
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_OUTPUT = REPO_ROOT / "downloads"
+SETS_DIR = REPO_ROOT / "sets"
 PORT = 8765
 
 app = FastAPI(title="spotify-dl")
@@ -862,6 +863,46 @@ def dj_export(req: DJExportRequest):
         raise HTTPException(409, "close rekordbox first")
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+def _resolve_ids_or_400(ids):
+    """Ordered track records for `ids`, resolved against the rekordbox
+    collection. Read-only: no backup, no db write, no rekordbox-running gate.
+    Any unknown id is a 400 (the whole set would otherwise silently drop it)."""
+    by_id = {t["id"]: t for t in _dj_tracks_or_503()}
+    unknown = [i for i in ids if i not in by_id]
+    if unknown:
+        raise HTTPException(400, f"unknown track ids: {', '.join(unknown)}")
+    return [by_id[i] for i in ids]
+
+
+@app.post("/api/dj/export/m3u8")
+def dj_export_m3u8(req: DJExportRequest):
+    """Write the ordered set as an m3u8 + JSON sidecar under sets/. Zero write
+    risk: never touches master.db, so — unlike /api/dj/export — it takes no
+    rekordbox-running guard and works while rekordbox is open."""
+    name = req.name.strip()
+    if not name or not req.ids:
+        raise HTTPException(400, "need a set name and at least one track")
+    tracks = _resolve_ids_or_400(req.ids)
+    path = setfile.save(SETS_DIR, name, tracks)
+    return {"path": str(path), "name": path.stem}
+
+
+@app.post("/api/dj/export/xml")
+def dj_export_xml(req: DJExportRequest):
+    """Return a rekordbox-importable DJ_PLAYLISTS XML for the ordered set as the
+    response body (so the browser saves it as a .xml). Read-only w.r.t.
+    rekordbox — no master.db write, no rekordbox-running guard."""
+    name = req.name.strip()
+    if not name or not req.ids:
+        raise HTTPException(400, "need a set name and at least one track")
+    tracks = _resolve_ids_or_400(req.ids)
+    xml = setfile.to_rekordbox_xml(tracks, name)
+    return Response(
+        content=xml, media_type="application/xml",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{setfile._safe_name(name)}.xml"'})
 
 
 def auto_import(output, files=None):
