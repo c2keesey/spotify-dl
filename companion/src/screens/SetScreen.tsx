@@ -78,16 +78,14 @@ export default function SetScreen({ stem, onOpenTrack, onBack }: Props) {
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id || !set) return;
-    setOrder((prev) => {
-      const from = prev.indexOf(String(active.id));
-      const to = prev.indexOf(String(over.id));
-      if (from < 0 || to < 0) return prev;
-      const next = arrayMove(prev, from, to);
-      // Order is cheap and reconstructible, but persist immediately anyway so a
-      // mid-flight app kill never loses the reorder.
-      void db.putSet({ ...set, order: next });
-      return next;
-    });
+    const from = order.indexOf(String(active.id));
+    const to = order.indexOf(String(over.id));
+    if (from < 0 || to < 0) return;
+    const next = arrayMove(order, from, to);
+    setOrder(next);
+    // Order is cheap and reconstructible, but persist immediately anyway so a
+    // mid-flight app kill never loses the reorder.
+    db.putSet({ ...set, order: next }).catch(() => toast.error("Couldn't save the new order"));
   };
 
   const onExport = async () => {
@@ -130,7 +128,7 @@ export default function SetScreen({ stem, onOpenTrack, onBack }: Props) {
     return (
       <main className="grain min-h-dvh flex flex-col items-center justify-center gap-4 p-6">
         <p className="text-sm text-muted-foreground">This set is no longer on this device.</p>
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" className="h-11" onClick={onBack}>
           <ArrowLeft className="size-4" /> Back to Import
         </Button>
       </main>
@@ -150,7 +148,7 @@ export default function SetScreen({ stem, onOpenTrack, onBack }: Props) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="press -ml-2 h-9 text-muted-foreground"
+                className="press -ml-2 h-11 text-muted-foreground"
                 onClick={onBack}
               >
                 <ArrowLeft className="size-4" /> Import

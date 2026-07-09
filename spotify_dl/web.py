@@ -42,6 +42,14 @@ app = FastAPI(title="spotify-dl")
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
+_HEADER_CTRL_RE = re.compile(r"[\r\n\x00-\x1f]+")
+
+
+def _header_safe(s):
+    """Collapse control characters (CR/LF and other C0) to a single space so
+    client-derived text can't inject extra HTTP response headers."""
+    return _HEADER_CTRL_RE.sub(" ", s or "")
+
 TOTAL_RE = re.compile(r"^Total songs: (\d+)")
 SC_SET_RE = re.compile(r"Saving (\d+) SoundCloud tracks")
 SC_TRACK_RE = re.compile(r"Saving SoundCloud track ")
@@ -1148,11 +1156,12 @@ def dj_cues_xml(req: CuesXmlRequest):
     tracks = [by_id[i] for i in known]
     name = parsed["name"] or parsed["set"] or "Flightcase cues"
     xml = setfile.to_rekordbox_xml(tracks, name, cues=parsed["cues"])
+    safe_name = _header_safe(setfile._safe_name(name))
     return Response(
         content=xml, media_type="application/xml",
         headers={"Content-Disposition":
-                 f'attachment; filename="{setfile._safe_name(name)} cues.xml"',
-                 "X-Unknown-Ids": ",".join(unknown)})
+                 f'attachment; filename="{safe_name} cues.xml"',
+                 "X-Unknown-Ids": _header_safe(",".join(unknown))})
 
 
 # ---- audition (stream a collection track's audio; THE security surface) ----

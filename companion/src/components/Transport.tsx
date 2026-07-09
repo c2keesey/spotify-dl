@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Minus, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,9 @@ type Props = {
  * a 10ms nudge land), ±10ms nudge buttons, BPM + key readouts. No audio logic
  * lives here — everything is props in, intents out.
  */
-export default function Transport({ playing, currentTime, duration, bpm, camelot, onTogglePlay, onNudge }: Props) {
+// memo with stable callback props: currentTime still changes per frame (the
+// clock needs it), so this re-renders during playback — but nothing else does.
+export default memo(function Transport({ playing, currentTime, duration, bpm, camelot, onTogglePlay, onNudge }: Props) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -67,4 +70,4 @@ export default function Transport({ playing, currentTime, duration, bpm, camelot
       </div>
     </div>
   );
-}
+});

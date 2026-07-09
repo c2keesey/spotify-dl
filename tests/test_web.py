@@ -1204,6 +1204,25 @@ def test_cues_xml_reports_unknown_ids(flightcase_client, monkeypatch):
     assert keys == ["2", "1"]                          # 999 dropped, known emitted
 
 
+def test_cues_xml_headers_have_no_crlf_injection(flightcase_client, monkeypatch):
+    """Client-derived text (set name, unknown ids) reaches response headers, so
+    CR/LF must be stripped — otherwise a crafted name injects extra headers."""
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", file_path="/lib/a.mp3"),
+        DJTRACK(id="2", file_path="/lib/b.mp3"),
+    ])
+    payload = _cues_payload(
+        set="evil\r\nX-Bad: 1", name="evil\r\nX-Bad: 1",
+        order=["2", "1", "sneaky\nid"])
+    r = flightcase_client.post("/api/dj/cues/xml", json={"cues": payload})
+    assert r.status_code == 200
+    assert "\r" not in r.headers["content-disposition"]
+    assert "\n" not in r.headers["content-disposition"]
+    assert "\r" not in r.headers["x-unknown-ids"]
+    assert "\n" not in r.headers["x-unknown-ids"]
+    assert "x-bad" not in {k.lower() for k in r.headers}
+
+
 def test_cues_xml_invalid_payload_400(flightcase_client, monkeypatch):
     monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [DJTRACK(id="1")])
     r = flightcase_client.post("/api/dj/cues/xml",

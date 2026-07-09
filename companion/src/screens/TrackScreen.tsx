@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [cues, setCuesState] = useState<Cue[]>([]);
   const [duration, setDuration] = useState(0);
-  const [view, setView] = useState<View>({ start: 0, end: 0 });
+  const [view, setView] = useState<View | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [armedLoop, setArmedLoop] = useState<number | null>(null);
@@ -46,6 +46,7 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
   const [missing, setMissing] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentTimeRef = useRef(0); // playhead as a ref, so callbacks reading it stay frame-stable
   const cuesRef = useRef<Cue[]>([]);
   const allCuesRef = useRef<TrackCues>({});
   const armedRef = useRef<number | null>(null);
@@ -74,7 +75,10 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
         setPeaks(pk ?? new Uint8Array());
         const d = meta.duration ?? 0;
         setDuration(d);
-        setView({ start: 0, end: d });
+        // Only seed a view once we know a positive span; a {0,0} view makes the
+        // waveform's xAtTime produce NaN. If duration is unknown here,
+        // onLoadedMetadata seeds it from the audio element instead.
+        if (d > 0) setView({ start: 0, end: d });
         setAudioUrl(url);
         setLoading(false);
       } catch {
@@ -99,6 +103,11 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
     }
     if (!dirtyRef.current) return;
     dirtyRef.current = false;
+    // allCuesRef is a mount-time snapshot of every track's cues; we merge this
+    // track's edits over it as {...allCues, [trackId]: current}. If a future
+    // feature edits a SIBLING track's cues while this screen is mounted, that
+    // snapshot goes stale and this write-through would clobber it — re-read
+    // db.getCues here before merging in that case.
     allCuesRef.current = { ...allCuesRef.current, [trackId]: cuesRef.current };
     void db.putCues(stem, allCuesRef.current);
   }, [stem, trackId]);
@@ -113,9 +122,13 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
     const onVis = () => {
       if (document.visibilityState === "hidden") flush();
     };
+    // iOS Safari doesn't always fire visibilitychange when the app switcher
+    // kills the tab, but pagehide is reliable — flush on both.
     document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", flush);
     return () => {
       document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", flush);
       flush(); // never drop a pending write on unmount
     };
   }, [flush]);
@@ -147,20 +160,22 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
   );
 
   // ---- audio engine ------------------------------------------------------
-  /** authoritative playhead — the element, not possibly-stale React state */
-  const now = () => audioRef.current?.currentTime ?? currentTime;
+  /** authoritative playhead — the element, else the ref (never per-frame state,
+   * so callbacks that read it stay referentially stable across playback). */
+  const now = useCallback(() => audioRef.current?.currentTime ?? currentTimeRef.current, []);
 
   const seek = useCallback(
     (t: number) => {
       const a = audioRef.current;
       const clamped = Math.max(0, Math.min(t, duration || t));
       if (a) a.currentTime = clamped;
+      currentTimeRef.current = clamped;
       setCurrentTime(clamped);
     },
     [duration],
   );
 
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     const a = audioRef.current;
     if (!a) return;
     if (a.paused) {
@@ -168,7 +183,9 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
     } else {
       a.pause();
     }
-  };
+  }, []);
+
+  const onNudge = useCallback((d: number) => seek(now() + d), [seek, now]);
 
   // rAF loop while playing: playhead tracking + the loop-wrap watcher.
   // (Never `timeupdate` — it fires ~4Hz, far too coarse for a tight loop.)
@@ -181,6 +198,7 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
         const armed = armedRef.current;
         const loop = armed !== null ? cuesRef.current.find((c) => c.num === armed) : undefined;
         if (shouldWrap(a.currentTime, loop)) a.currentTime = loop!.start;
+        currentTimeRef.current = a.currentTime;
         setCurrentTime(a.currentTime);
       }
       raf = requestAnimationFrame(tick);
@@ -195,160 +213,56 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
     // the element's duration is authoritative over the manifest's
     setDuration(a.duration);
     setView((v) =>
-      v.end === 0 || Math.abs(v.end - duration) < 0.001 ? { start: 0, end: a.duration } : clampView(v, a.duration),
+      v == null || v.end === 0 || Math.abs(v.end - duration) < 0.001
+        ? { start: 0, end: a.duration }
+        : clampView(v, a.duration),
     );
   };
 
   // ---- pad + menu intents ------------------------------------------------
-  const cueAt = (num: number) => cuesRef.current.find((c) => c.num === num);
+  // These are useCallback-stable so React.memo can keep CuePads from re-rendering
+  // on every playhead frame. They read live values from refs, never per-frame state.
+  const cueAt = useCallback((num: number) => cuesRef.current.find((c) => c.num === num), []);
 
-  const onPlaceCue = (num: number) => {
+  const onPlaceCue = useCallback((num: number) => {
     dispatch({ type: "place", num, start: now() });
-  };
+  }, [dispatch, now]);
 
-  const onJumpToCue = (num: number) => {
+  const onJumpToCue = useCallback((num: number) => {
     const cue = cueAt(num);
     if (!cue) return;
     seek(cue.start);
     if (cue.end !== null) arm(armedRef.current === num ? null : num); // loop pads toggle arm
-  };
+  }, [cueAt, seek, arm]);
 
-  const onClearCue = (num: number) => {
+  const onClearCue = useCallback((num: number) => {
     if (dispatch({ type: "clear", num })) toast(`Pad ${letter(num)} cleared`);
-  };
+  }, [dispatch]);
 
-  const onOpenPadMenu = (num: number) => {
+  const onOpenPadMenu = useCallback((num: number) => {
     setRenameValue(cueAt(num)?.name ?? "");
     setMenuPad(num);
-  };
+  }, [cueAt]);
 
-  const onSetLoopEnd = (num: number) => {
+  const onSetLoopEnd = useCallback((num: number) => {
     if (!dispatch({ type: "setLoopEnd", num, end: now() })) {
       toast.error("Loop end must be after the cue point — move the playhead past it first");
       return;
     }
     setMenuPad(null);
-  };
+  }, [dispatch, now]);
 
-  const onSaveRename = (num: number) => {
+  const onSaveRename = useCallback((num: number) => {
     dispatch({ type: "rename", num, name: renameValue.trim() });
     setMenuPad(null);
-  };
+  }, [dispatch, renameValue]);
 
-  // ---- render --------------------------------------------------------------
-  if (loading) {
-    return (
-      <main className="grain flex min-h-dvh items-center justify-center p-6">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </main>
-    );
-  }
-
-  if (missing || !track) {
-    return (
-      <main className="grain flex min-h-dvh flex-col items-center justify-center gap-4 p-6">
-        <p className="text-sm text-muted-foreground">This track is no longer on this device.</p>
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="size-4" /> Back to Set
-        </Button>
-      </main>
-    );
-  }
-
+  // The pad menu is memoized so it stops re-rendering on every playhead frame:
+  // menuCue and renameValue don't change during playback, and the callbacks are
+  // all useCallback-stable.
   const menuCue = menuPad !== null ? cues.find((c) => c.num === menuPad) : undefined;
-  const zoomed = isZoomed(view, duration);
-
-  return (
-    <main className="grain flex h-dvh flex-col">
-      {audioUrl && (
-        <audio
-          ref={audioRef}
-          src={audioUrl}
-          preload="auto"
-          className="hidden"
-          onLoadedMetadata={onLoadedMetadata}
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-        />
-      )}
-
-      <header className="flex items-center gap-1 border-b border-border px-2 py-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="press h-11 shrink-0 px-2 text-muted-foreground"
-          onClick={onBack}
-        >
-          <ArrowLeft className="size-4" /> Set
-        </Button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium leading-tight">{track.title}</p>
-          <p className="truncate text-xs text-muted-foreground">{track.artist}</p>
-        </div>
-        <span
-          className={cn(
-            "mr-1 inline-flex min-w-6 shrink-0 items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[0.65rem]",
-            cues.length > 0
-              ? "border-led/50 bg-led/10 text-led led-glow"
-              : "border-border bg-secondary text-muted-foreground",
-          )}
-        >
-          <span className={cn("size-1.5 rounded-full", cues.length > 0 ? "bg-led" : "bg-muted-foreground/50")} />
-          {cues.length}
-        </span>
-      </header>
-
-      <section className="relative min-h-[160px] flex-1 bg-card/40">
-        <Waveform
-          peaks={peaks}
-          rate={track.peaks_rate}
-          duration={duration}
-          currentTime={currentTime}
-          cues={cues}
-          view={view}
-          onSeek={seek}
-          onMoveCue={(num, start) => dispatch({ type: "move", num, start })}
-          onViewChange={setView}
-        />
-        {zoomed && (
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label="Zoom out to full track"
-            className="press absolute right-2 top-2 h-11 bg-background/80"
-            onClick={() => setView({ start: 0, end: duration })}
-          >
-            <ZoomOut className="size-4" /> Full
-          </Button>
-        )}
-      </section>
-
-      <section className="border-t border-border px-3 py-2">
-        <Transport
-          playing={playing}
-          currentTime={currentTime}
-          duration={duration}
-          bpm={track.bpm}
-          camelot={track.camelot || track.key_name}
-          onTogglePlay={togglePlay}
-          onNudge={(d) => seek(now() + d)}
-        />
-      </section>
-
-      <section
-        className="border-t border-border px-3 pt-2"
-        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
-      >
-        <CuePads
-          cues={cues}
-          armedLoop={armedLoop}
-          onPlaceCue={onPlaceCue}
-          onJumpToCue={onJumpToCue}
-          onClearCue={onClearCue}
-          onOpenPadMenu={onOpenPadMenu}
-        />
-      </section>
-
+  const padMenu = useMemo(
+    () => (
       <Dialog open={menuCue != null} onOpenChange={(open) => !open && setMenuPad(null)}>
         <DialogContent className="max-w-sm">
           {menuCue && (
@@ -422,6 +336,126 @@ export default function TrackScreen({ stem, trackId, onBack }: Props) {
           )}
         </DialogContent>
       </Dialog>
+    ),
+    [menuCue, renameValue, dispatch, onJumpToCue, onSetLoopEnd, onSaveRename],
+  );
+
+  // ---- render --------------------------------------------------------------
+  if (loading) {
+    return (
+      <main className="grain flex min-h-dvh items-center justify-center p-6">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </main>
+    );
+  }
+
+  if (missing || !track) {
+    return (
+      <main className="grain flex min-h-dvh flex-col items-center justify-center gap-4 p-6">
+        <p className="text-sm text-muted-foreground">This track is no longer on this device.</p>
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft className="size-4" /> Back to Set
+        </Button>
+      </main>
+    );
+  }
+
+  const zoomed = view ? isZoomed(view, duration) : false;
+
+  return (
+    <main className="grain flex h-dvh flex-col">
+      {audioUrl && (
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          preload="auto"
+          className="hidden"
+          onLoadedMetadata={onLoadedMetadata}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+        />
+      )}
+
+      <header className="flex items-center gap-1 border-b border-border px-2 py-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="press h-11 shrink-0 px-2 text-muted-foreground"
+          onClick={onBack}
+        >
+          <ArrowLeft className="size-4" /> Set
+        </Button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium leading-tight">{track.title}</p>
+          <p className="truncate text-xs text-muted-foreground">{track.artist}</p>
+        </div>
+        <span
+          className={cn(
+            "mr-1 inline-flex min-w-6 shrink-0 items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[0.65rem]",
+            cues.length > 0
+              ? "border-led/50 bg-led/10 text-led led-glow"
+              : "border-border bg-secondary text-muted-foreground",
+          )}
+        >
+          <span className={cn("size-1.5 rounded-full", cues.length > 0 ? "bg-led" : "bg-muted-foreground/50")} />
+          {cues.length}
+        </span>
+      </header>
+
+      <section className="relative min-h-[160px] flex-1 bg-card/40">
+        {view && (
+          <Waveform
+            peaks={peaks}
+            rate={track.peaks_rate}
+            duration={duration}
+            currentTime={currentTime}
+            cues={cues}
+            view={view}
+            onSeek={seek}
+            onMoveCue={(num, start) => dispatch({ type: "move", num, start })}
+            onViewChange={setView}
+          />
+        )}
+        {zoomed && (
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Zoom out to full track"
+            className="press absolute right-2 top-2 h-11 bg-background/80"
+            onClick={() => setView({ start: 0, end: duration })}
+          >
+            <ZoomOut className="size-4" /> Full
+          </Button>
+        )}
+      </section>
+
+      <section className="border-t border-border px-3 py-2">
+        <Transport
+          playing={playing}
+          currentTime={currentTime}
+          duration={duration}
+          bpm={track.bpm}
+          camelot={track.camelot || track.key_name}
+          onTogglePlay={togglePlay}
+          onNudge={onNudge}
+        />
+      </section>
+
+      <section
+        className="border-t border-border px-3 pt-2"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        <CuePads
+          cues={cues}
+          armedLoop={armedLoop}
+          onPlaceCue={onPlaceCue}
+          onJumpToCue={onJumpToCue}
+          onClearCue={onClearCue}
+          onOpenPadMenu={onOpenPadMenu}
+        />
+      </section>
+
+      {padMenu}
     </main>
   );
 }

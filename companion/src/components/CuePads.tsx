@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { Repeat } from "lucide-react";
 import { classifyPadGesture, cancelsLongPress, LONG_PRESS_MS } from "@/lib/padGesture";
 import { formatClockCs } from "@/lib/format";
@@ -19,7 +19,9 @@ type Props = {
  * Filled pad: tap jumps (loops also arm), horizontal swipe clears, long-press
  * opens the pad menu. Empty pad: tap places a cue at the playhead.
  */
-export default function CuePads({ cues, armedLoop, onPlaceCue, onJumpToCue, onClearCue, onOpenPadMenu }: Props) {
+// memo: the parent re-renders every playback frame; with referentially stable
+// props (no currentTime here) the pads skip those renders entirely.
+export default memo(function CuePads({ cues, armedLoop, onPlaceCue, onJumpToCue, onClearCue, onOpenPadMenu }: Props) {
   const byNum = new Map<number, Cue>(cues.map((c) => [c.num, c]));
   return (
     <div className="grid grid-cols-4 gap-2 md:grid-cols-8">
@@ -37,7 +39,7 @@ export default function CuePads({ cues, armedLoop, onPlaceCue, onJumpToCue, onCl
       ))}
     </div>
   );
-}
+});
 
 function Pad({
   num,
