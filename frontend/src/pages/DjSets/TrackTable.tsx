@@ -14,10 +14,10 @@ import { cn } from "@/lib/utils";
 import { camelotColor } from "@/lib/camelot";
 import {
   fileStateMeta,
-  formatDuration,
   type SortDir,
   type SortKey,
 } from "@/lib/trackSort";
+import { formatDuration } from "@/lib/format";
 import type { DjTrack, FileState } from "@/lib/types";
 
 const COLSPAN = 8;

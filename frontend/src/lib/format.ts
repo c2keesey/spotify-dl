@@ -14,6 +14,12 @@ export function formatClock(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 }
 
+/** A track's length for a table cell. Blank when unknown. */
+export function formatDuration(sec: number | null): string {
+  if (sec == null || !Number.isFinite(sec)) return "";
+  return formatClock(sec);
+}
+
 /** Signed BPM delta for a transition label: `+6`, `-1.5`, `±0`. */
 export function signedDelta(n: number): string {
   const r = Math.round(n * 10) / 10;

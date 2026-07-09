@@ -2,9 +2,9 @@ import {
   camelotRank,
   distinctGenres,
   filterTracks,
-  formatDuration,
   sortTracks,
 } from "./trackSort";
+import { formatDuration } from "./format";
 import type { DjTrack } from "./types";
 
 /** Build a DjTrack with sensible defaults; override what a test cares about. */

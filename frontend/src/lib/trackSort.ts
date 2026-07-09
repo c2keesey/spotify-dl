@@ -87,14 +87,6 @@ export function distinctGenres(tracks: DjTrack[]): string[] {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
-/** Seconds → `m:ss` (e.g. 214 → "3:34"). Blank for null/non-finite. */
-export function formatDuration(sec: number | null): string {
-  if (sec == null || !Number.isFinite(sec)) return "";
-  const s = Math.max(0, Math.round(sec));
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, "0")}`;
-}
-
 export type FileStateMeta = { label: string; short: string; className: string };
 
 /**
