@@ -52,6 +52,9 @@ export const db = {
   getCues(stem: string): Promise<TrackCues> {
     return tx<TrackCues | undefined>("cues", "readonly", (store) => store.get(stem)).then((c) => c ?? {});
   },
+  deleteCues(stem: string): Promise<void> {
+    return tx<undefined>("cues", "readwrite", (store) => store.delete(stem)).then(() => undefined);
+  },
   putPeaks(stem: string, trackId: string, peaks: Uint8Array): Promise<void> {
     return tx<IDBValidKey>("peaks", "readwrite", (store) => store.put(peaks, `${stem}/${trackId}`)).then(
       () => undefined,
@@ -59,5 +62,8 @@ export const db = {
   },
   getPeaks(stem: string, trackId: string): Promise<Uint8Array | undefined> {
     return tx<Uint8Array | undefined>("peaks", "readonly", (store) => store.get(`${stem}/${trackId}`));
+  },
+  deletePeaks(stem: string, trackId: string): Promise<void> {
+    return tx<undefined>("peaks", "readwrite", (store) => store.delete(`${stem}/${trackId}`)).then(() => undefined);
   },
 };
