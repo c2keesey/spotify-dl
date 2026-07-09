@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import webbrowser
+from collections import OrderedDict
 from pathlib import Path
 
 import spotipy
@@ -728,8 +729,9 @@ def _dj_tracks_or_503():
 # read. Only genuinely-new-or-fuzzy files are tag-read, and the result is cached
 # per folder with a short TTL so the 5s status poll doesn't re-read ID3 tags
 # every time.
-_NOT_IMPORTED_CACHE = {}          # folder path -> (count, monotonic timestamp)
+_NOT_IMPORTED_CACHE = OrderedDict()   # folder path -> (count, monotonic timestamp)
 _NOT_IMPORTED_TTL = 30.0
+_NOT_IMPORTED_MAX = 32                # the key is a user-supplied path; keep it bounded
 _NOT_IMPORTED_LOCK = threading.Lock()
 
 
@@ -739,6 +741,7 @@ def _count_not_imported(folder, tracks):
     with _NOT_IMPORTED_LOCK:
         hit = _NOT_IMPORTED_CACHE.get(key)
         if hit and now - hit[1] < _NOT_IMPORTED_TTL:
+            _NOT_IMPORTED_CACHE.move_to_end(key)
             return hit[0]
     files = [str(f) for f in folder.rglob("*.mp3")]
     new, _dupes = rekordbox.find_duplicates(files, tracks)
@@ -746,6 +749,9 @@ def _count_not_imported(folder, tracks):
     count = len(accepted)
     with _NOT_IMPORTED_LOCK:
         _NOT_IMPORTED_CACHE[key] = (count, now)
+        _NOT_IMPORTED_CACHE.move_to_end(key)
+        while len(_NOT_IMPORTED_CACHE) > _NOT_IMPORTED_MAX:
+            _NOT_IMPORTED_CACHE.popitem(last=False)
     return count
 
 
