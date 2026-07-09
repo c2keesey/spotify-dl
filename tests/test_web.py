@@ -483,6 +483,118 @@ def test_dj_export_unknown_ids_is_400(client, monkeypatch):
     assert r.status_code == 400 and "unknown track ids" in r.json()["detail"]
 
 
+# ---- dj: suggest the next track (read-only; recommends, never auto-adds) ----
+
+def test_dj_suggest_ranks_against_last_slot(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0),   # the last (only) slot
+        DJTRACK(id="2", camelot="8A", bpm=124.0),   # same key & tempo -> good
+        DJTRACK(id="3", camelot="9A", bpm=126.0),   # neighbour, tiny bpm gap -> good
+        DJTRACK(id="4", camelot="3B", bpm=90.0),    # distant key -> clash
+    ])
+    d = client.post("/api/dj/suggest", json={"ids": ["1"]}).json()
+    ids = [s["track"]["id"] for s in d["suggestions"]]
+    assert ids == ["2", "3", "4"]                   # good, good, clash — clash last
+    assert d["suggestions"][0]["rating"] == "good"
+    assert d["suggestions"][-1]["rating"] == "clash"
+
+
+def test_dj_suggest_reports_relation_and_bpm_delta_not_just_a_score(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0),
+        DJTRACK(id="2", camelot="8B", bpm=126.0)])
+    s = client.post("/api/dj/suggest", json={"ids": ["1"]}).json()["suggestions"][0]
+    assert s["relation"] == "Relative major/minor"   # the harmonic "why"
+    assert s["bpm_delta"] == 2.0                       # signed candidate-minus-last, for display
+
+
+def test_dj_suggest_excludes_set_members(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0),
+        DJTRACK(id="2", camelot="8A", bpm=124.0),
+        DJTRACK(id="3", camelot="9A", bpm=126.0),
+    ])
+    d = client.post("/api/dj/suggest", json={"ids": ["1", "2"]}).json()
+    ids = [s["track"]["id"] for s in d["suggestions"]]
+    assert ids == ["3"]                              # ranked against last slot "2", members gone
+
+
+def test_dj_suggest_excludes_unscoreable_tracks(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0),
+        DJTRACK(id="2", camelot=None, key_name=None, bpm=124.0, status="pending"),  # no key
+        DJTRACK(id="3", camelot="8A", bpm=None, status="pending"),                  # no bpm
+        DJTRACK(id="4", camelot="9A", bpm=126.0),                                   # scoreable
+    ])
+    d = client.post("/api/dj/suggest", json={"ids": ["1"]}).json()
+    assert [s["track"]["id"] for s in d["suggestions"]] == ["4"]
+
+
+def test_dj_suggest_excludes_streaming_entries(client, monkeypatch):
+    # a not_a_file entry has BPM/key in the DB but no local audio to cue -> never suggested
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0),
+        DJTRACK(id="2", camelot="8A", bpm=124.0, file_path="spotify:track:abc",
+                file_state="not_a_file"),
+        DJTRACK(id="3", camelot="9A", bpm=126.0),
+    ])
+    d = client.post("/api/dj/suggest", json={"ids": ["1"]}).json()
+    assert [s["track"]["id"] for s in d["suggestions"]] == ["3"]
+
+
+def test_dj_suggest_includes_missing_file_tracks(client, monkeypatch):
+    # a moved file (missing) is still a perfectly good suggestion: BPM/key come from the DB
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0),
+        DJTRACK(id="2", camelot="8A", bpm=124.0, file_path="/lib/moved.mp3",
+                file_state="missing"),
+    ])
+    d = client.post("/api/dj/suggest", json={"ids": ["1"]}).json()
+    assert [s["track"]["id"] for s in d["suggestions"]] == ["2"]
+
+
+def test_dj_suggest_empty_set_is_empty(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0)])
+    assert client.post("/api/dj/suggest", json={"ids": []}).json() == {"suggestions": []}
+
+
+def test_dj_suggest_unscoreable_last_slot_is_empty(client, monkeypatch):
+    # nothing to rank against when the last slot has no key/bpm -> empty, not garbage
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot=None, key_name=None, bpm=None, status="pending"),
+        DJTRACK(id="2", camelot="8A", bpm=124.0)])
+    assert client.post("/api/dj/suggest", json={"ids": ["1"]}).json() == {"suggestions": []}
+
+
+def test_dj_suggest_caps_results(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="0", camelot="8A", bpm=124.0)] + [
+        DJTRACK(id=str(i), camelot="8A", bpm=124.0) for i in range(1, 40)])
+    d = client.post("/api/dj/suggest", json={"ids": ["0"]}).json()
+    assert len(d["suggestions"]) == 20        # sensible cap, not all 39
+
+
+def test_dj_suggest_never_writes_or_imports(client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", camelot="8A", bpm=124.0),
+        DJTRACK(id="2", camelot="8A", bpm=124.0)])
+
+    def forbidden(*a, **k):
+        raise AssertionError("suggest must never write to the rekordbox database")
+
+    monkeypatch.setattr(web.rekordbox, "import_files", forbidden)
+    monkeypatch.setattr(web.rekordbox, "export_playlist", forbidden)
+    assert client.post("/api/dj/suggest", json={"ids": ["1"]}).status_code == 200
+
+
+def test_dj_suggest_db_error_is_503(client, monkeypatch):
+    def boom():
+        raise RuntimeError("database is locked")
+    monkeypatch.setattr(web.rekordbox, "load_tracks", boom)
+    assert client.post("/api/dj/suggest", json={"ids": ["1"]}).status_code == 503
+
+
 # ---- dj: duplicates (read-only; works while rekordbox runs) ----
 
 def test_dj_duplicates_groups_exact_and_fuzzy(client, monkeypatch):

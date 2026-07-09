@@ -1,4 +1,4 @@
-import type { AppConfig, BrowseResult, Cron, DjStatus, DjTrack, DuplicatesResult, EnergyResult, FileState, ImportResult, Job, Library, LinkMeta, OpenSet, Rating, RekordboxPlaylist, SetSummary } from "./types";
+import type { AppConfig, BrowseResult, Cron, DjStatus, DjTrack, DuplicatesResult, EnergyResult, FileState, ImportResult, Job, Library, LinkMeta, OpenSet, Rating, RekordboxPlaylist, SetSummary, SuggestResult } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -53,6 +53,9 @@ export const api = {
   djImport: (path: string) => req<ImportResult>("/api/dj/import", post({ path })),
   djCompatibility: (ids: string[]) => req<{ ratings: Rating[] }>("/api/dj/compatibility", post({ ids })),
   djEnergy: (ids: string[]) => req<EnergyResult>("/api/dj/energy", post({ ids })),
+  /** Ranked candidates for what could play after the set's last slot. Read-only:
+   *  it recommends, never reorders or adds — the user clicks to add a row. */
+  djSuggest: (ids: string[]) => req<SuggestResult>("/api/dj/suggest", post({ ids })),
   djExport: (name: string, ids: string[]) => req<{ playlist: string }>("/api/dj/export", post({ name, ids })),
   djDuplicates: () => req<DuplicatesResult>("/api/dj/duplicates"),
   // ---- saved sets (Crate's own files; safe while rekordbox is open) ----

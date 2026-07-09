@@ -6,6 +6,7 @@ import { TrackBrowser } from "./TrackBrowser";
 import { SetRail } from "./SetRail";
 import { CamelotWheel } from "./CamelotWheel";
 import { EnergyScope } from "./EnergyScope";
+import { Suggestions } from "./Suggestions";
 import { Duplicates } from "./Duplicates";
 import { SetLibrary } from "./SetLibrary";
 import { AuditionProvider } from "./Audition";
@@ -90,6 +91,14 @@ export function DjSetsPage({ outdir }: { outdir: string }) {
           <PanelHeader>Energy Scope</PanelHeader>
           <EnergyScope tracks={set.tracks} />
         </div>
+      </div>
+
+      <div
+        style={{ animationDelay: "280ms" }}
+        className="animate-[fadeUp_.4s_ease_both] space-y-3"
+      >
+        <PanelHeader>Suggestions</PanelHeader>
+        <Suggestions />
       </div>
       </>
       )}

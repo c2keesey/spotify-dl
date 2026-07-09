@@ -58,6 +58,28 @@ def harmonic_score(c1, c2):
     return 2
 
 
+def key_relation(c1, c2):
+    """Human-readable name for the harmonic relationship between two Camelot
+    keys, describing WHY harmonic_score rated the pair as it did — so a
+    suggestion can show its reasoning, not just an opaque number. Pure and
+    None-safe; the branches mirror harmonic_score exactly."""
+    if not c1 or not c2:
+        return "Unknown key"
+    if c1 == c2:
+        return "Same key"
+    n1, r1 = _camelot_parts(c1)
+    n2, r2 = _camelot_parts(c2)
+    if n1 == n2:                                   # relative major/minor
+        return "Relative major/minor"
+    step = min(abs(n1 - n2), 12 - abs(n1 - n2))
+    if r1 == r2 and step == 1:                     # one step around the wheel
+        forward = (n2 - n1) % 12 == 1              # +1 lifts energy, -1 drops it
+        return "Energy boost (+1)" if forward else "Energy drop (-1)"
+    if r1 == r2 and step == 2:
+        return "Two steps"
+    return "Clash"
+
+
 def bpm_delta(b1, b2):
     """Smallest relative tempo gap, allowing half/double-time matches."""
     if not b1 or not b2:

@@ -83,6 +83,28 @@ def test_unknown_key_never_clashes_on_key_alone():
     assert dj.rate_transition(T(None, 124), T("8A", 124)) == "ok"
 
 
+# ---- key_relation: the human-readable "why" behind a suggestion's score ----
+
+@pytest.mark.parametrize("c1,c2,relation", [
+    ("8A", "8A", "Same key"),
+    ("8A", "8B", "Relative major/minor"),
+    ("8A", "9A", "Energy boost (+1)"),
+    ("12A", "1A", "Energy boost (+1)"),   # wraps 12 -> 1
+    ("8A", "7A", "Energy drop (-1)"),
+    ("1A", "12A", "Energy drop (-1)"),    # wraps 1 -> 12
+    ("8A", "10A", "Two steps"),
+    ("8A", "3B", "Clash"),
+])
+def test_key_relation_names_each_harmonic_relationship(c1, c2, relation):
+    assert dj.key_relation(c1, c2) == relation
+
+
+def test_key_relation_unknown_key():
+    assert dj.key_relation(None, "8A") == "Unknown key"
+    assert dj.key_relation("8A", None) == "Unknown key"
+    assert dj.key_relation(None, None) == "Unknown key"
+
+
 # ---- energy ----
 
 FFMPEG_EBUR128_TAIL = """

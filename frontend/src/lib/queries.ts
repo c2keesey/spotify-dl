@@ -21,4 +21,5 @@ export const qk = {
   djStatus: (path: string) => ["djStatus", path] as const,
   djTracks: (f: object) => ["djTracks", f] as const,
   djCompat: (ids: string[]) => ["djCompat", ids] as const,
+  djSuggest: (ids: string[]) => ["djSuggest", ids] as const,
 };

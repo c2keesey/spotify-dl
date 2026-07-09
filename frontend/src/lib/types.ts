@@ -36,3 +36,9 @@ export type ResolvedEntry = { id: string | null; path: string; resolved_id?: str
 export type OpenSet = { name: string; stem: string; tracks: DjTrack[]; path_resolved: ResolvedEntry[]; unresolved: ResolvedEntry[]; rekordbox_playlist_id: string | null; rekordbox_playlist_name: string | null };
 /** An existing rekordbox playlist read in as a read-only set the user can fork. */
 export type RekordboxPlaylist = { id: string; name: string; track_count: number; track_ids: string[] };
+/** One ranked candidate for what could play after the set's last slot. Carries
+ *  its reasoning — `relation` is the harmonic key relation (e.g. "Same key",
+ *  "Energy boost (+1)"), `bpm_delta` the signed tempo change — so the ranking is
+ *  never an opaque number. The user clicks to add; nothing is auto-ordered. */
+export type Suggestion = { track: DjTrack; rating: Rating; relation: string; bpm_delta: number | null };
+export type SuggestResult = { suggestions: Suggestion[] };

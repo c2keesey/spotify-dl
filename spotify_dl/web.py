@@ -858,6 +858,53 @@ def dj_compatibility(req: DJIdsRequest):
     return {"ratings": [dj.rate_transition(a, b) for a, b in zip(seq, seq[1:])]}
 
 
+SUGGEST_N = 20
+_RATING_RANK = {"good": 0, "ok": 1, "clash": 2}
+
+
+def _scoreable(t):
+    """A track can only be ranked — and honestly offered — when rekordbox has
+    both a BPM and a key. A streaming pointer (not_a_file) has that data but no
+    local audio to cue, so it's never a mixable suggestion. A missing/unmounted
+    file IS suggestible: its BPM/key live in the DB, not the audio."""
+    return bool(t.get("bpm")) and bool(t.get("camelot")) and t.get("file_state") != "not_a_file"
+
+
+@app.post("/api/dj/suggest")
+def dj_suggest(req: DJIdsRequest):
+    """Rank the library against the LAST slot in the ordered set for what could
+    play next. Every suggestion carries its reasoning — the key relation and the
+    signed BPM delta — never a bare score, because an opaque ranking won't be
+    trusted. This RECOMMENDS: it never reorders the set and never adds anything.
+    The user clicks to add. Empty set (or an unscoreable last slot) -> no
+    suggestions, not an error."""
+    if not req.ids:
+        return {"suggestions": []}
+    by_id = {t["id"]: t for t in _dj_tracks_or_503()}
+    last = by_id.get(req.ids[-1])
+    if last is None or not _scoreable(last):
+        return {"suggestions": []}   # nothing meaningful to rank against
+    in_set = set(req.ids)
+    scored = []
+    for t in by_id.values():         # one linear pass over the collection
+        if t["id"] in in_set or not _scoreable(t):
+            continue
+        rating = dj.rate_transition(last, t)
+        scored.append((
+            _RATING_RANK[rating],
+            dj.harmonic_score(last["camelot"], t["camelot"]),
+            dj.bpm_delta(last["bpm"], t["bpm"]),
+            t, rating,
+        ))
+    scored.sort(key=lambda s: (s[0], s[1], s[2]))
+    return {"suggestions": [
+        {"track": t, "rating": rating,
+         "relation": dj.key_relation(last["camelot"], t["camelot"]),
+         "bpm_delta": round(t["bpm"] - last["bpm"], 1)}
+        for _rr, _h, _d, t, rating in scored[:SUGGEST_N]
+    ]}
+
+
 @app.post("/api/dj/energy")
 def dj_energy(req: DJIdsRequest):
     """Integrated loudness for the given tracks (cached; computed on demand).
