@@ -260,8 +260,22 @@ def _playlist_names(db):
     return names
 
 
-def load_tracks():
-    """All collection tracks as normalized records (sampler content excluded)."""
+# Every DJ endpoint reads the whole collection, and an <audio> element issues a
+# range request per seek — each one otherwise reopening the DB and walking all
+# 1437 rows. A short TTL keeps polling cheap; our own writes invalidate it
+# explicitly so an import or export shows up immediately rather than after it.
+_TRACKS_CACHE = None          # (records, monotonic timestamp)
+_TRACKS_TTL = 5.0
+_TRACKS_LOCK = threading.Lock()
+
+
+def invalidate_tracks_cache():
+    global _TRACKS_CACHE
+    with _TRACKS_LOCK:
+        _TRACKS_CACHE = None
+
+
+def _read_tracks():
     db = open_db()
     try:
         playlists = _playlist_names(db)
@@ -275,6 +289,19 @@ def load_tracks():
         return out
     finally:
         db.close()
+
+
+def load_tracks():
+    """All collection tracks as normalized records (sampler content excluded)."""
+    global _TRACKS_CACHE
+    now = time.monotonic()
+    with _TRACKS_LOCK:
+        if _TRACKS_CACHE and now - _TRACKS_CACHE[1] < _TRACKS_TTL:
+            return _TRACKS_CACHE[0]
+    records = _read_tracks()          # DB read runs unlocked
+    with _TRACKS_LOCK:
+        _TRACKS_CACHE = (records, time.monotonic())
+    return records
 
 
 # ---- write guards ----
@@ -338,6 +365,7 @@ def import_files(paths):
             db.commit()
         finally:
             db.close()
+        invalidate_tracks_cache()
     return {"imported": new, "skipped_duplicates": dupes}
 
 
@@ -364,6 +392,7 @@ def export_playlist(name, track_ids):
         for i, tid in enumerate(track_ids, 1):
             db.add_to_playlist(pl, tid, track_no=i)
         db.commit()
+        invalidate_tracks_cache()
         return {"playlist": final}
     finally:
         db.close()

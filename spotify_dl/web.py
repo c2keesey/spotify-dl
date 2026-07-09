@@ -1008,7 +1008,9 @@ def dj_audio(track_id: str, request: Request):
     if rekordbox.file_state(path) != "present" or not os.path.isfile(path):
         raise HTTPException(404, "audio file not available")
     file_size = os.path.getsize(path)
-    headers = {"Accept-Ranges": "bytes"}
+    # nosniff: this endpoint streams bytes off the user's disk, so never let a
+    # browser second-guess the content type we derived from the extension.
+    headers = {"Accept-Ranges": "bytes", "X-Content-Type-Options": "nosniff"}
     rng = _parse_range(request.headers.get("range"), file_size)
     if rng == "unsatisfiable":
         return Response(status_code=416,

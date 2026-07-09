@@ -550,3 +550,20 @@ def test_group_exact_dup_alone_is_not_also_reported_as_fuzzy():
     so it never doubles as a fuzzy group."""
     groups = rb.group_duplicates([_rec("1", "/lib/a.mp3"), _rec("2", "/lib/a.mp3")])
     assert [g["reason"] for g in groups] == ["exact_path"]
+
+
+def test_load_tracks_is_memoized_and_invalidated_by_writes(monkeypatch):
+    calls = []
+
+    def fake_read():
+        calls.append(1)
+        return [{"id": "1"}]
+
+    monkeypatch.setattr(rb, "_read_tracks", fake_read)
+    rb.invalidate_tracks_cache()
+    rb.load_tracks()
+    rb.load_tracks()
+    assert len(calls) == 1, "second read inside the TTL must hit the cache"
+    rb.invalidate_tracks_cache()
+    rb.load_tracks()
+    assert len(calls) == 2, "an explicit invalidation must force a re-read"
