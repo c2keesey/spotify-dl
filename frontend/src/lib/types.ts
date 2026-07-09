@@ -7,7 +7,13 @@ export type CronFields = { freq: "daily" | "weekly" | "hourly"; hour?: number; m
 export type Cron = { id: string; schedule: string; friendly: string; enabled: boolean; managed: boolean; command: string; output?: string; label?: string; urls?: string[]; fields?: CronFields | null };
 export type AppConfig = { default_output: string; places: { label: string; path: string }[] };
 export type BrowseResult = { path: string; parent: string | null; dirs: string[] };
-export type DjTrack = { id: string; title: string; artist: string; bpm: number | null; key_name: string | null; camelot: string | null; file_path: string; duration: number | null; status: "analyzed" | "pending"; playlists: string[] };
-export type DjStatus = { running: boolean; can_write: boolean; analyzed: number; pending: number; not_imported: number };
+/** Whether the track's audio file is actually on disk. "unmounted" means the
+ *  volume is disconnected, which is emphatically not the same as deleted. */
+export type FileState = "present" | "missing" | "unmounted" | "not_a_file";
+export type DjTrack = { id: string; title: string; artist: string; bpm: number | null; key_name: string | null; camelot: string | null; genre: string | null; file_path: string; file_state: FileState; duration: number | null; status: "analyzed" | "pending"; playlists: string[] };
+export type DjStatus = { running: boolean; can_write: boolean; analyzed: number; pending: number; not_imported: number; missing: number; unmounted: number; not_a_file: number };
 export type Rating = "good" | "ok" | "clash";
+/** Why a track has no energy value. Only "measured" carries a number. */
+export type EnergyState = "measured" | "missing" | "failed";
+export type EnergyResult = { energy: Record<string, number | null>; state: Record<string, EnergyState> };
 export type ImportResult = { imported: string[]; skipped_duplicates: { path: string; reason: string }[] };

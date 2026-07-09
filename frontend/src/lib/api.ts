@@ -1,4 +1,4 @@
-import type { AppConfig, BrowseResult, Cron, DjStatus, DjTrack, ImportResult, Job, Library, LinkMeta, Rating } from "./types";
+import type { AppConfig, BrowseResult, Cron, DjStatus, DjTrack, EnergyResult, FileState, ImportResult, Job, Library, LinkMeta, Rating } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -40,16 +40,18 @@ export const api = {
   cronToggle: (id: string) => req<{ enabled: boolean }>(`/api/crons/${id}/toggle`, { method: "POST" }),
   cronDelete: (id: string) => req<unknown>(`/api/crons/${id}`, { method: "DELETE" }).then(() => undefined),
   djStatus: (path: string) => req<DjStatus>(`/api/dj/status?path=${encodeURIComponent(path)}`),
-  djTracks: (f: { q?: string; bpm_min?: number; bpm_max?: number; camelot?: string }) => {
+  djTracks: (f: { q?: string; bpm_min?: number; bpm_max?: number; camelot?: string; genre?: string; file_state?: FileState | "" }) => {
     const p = new URLSearchParams();
     if (f.q) p.set("q", f.q);
     if (f.bpm_min) p.set("bpm_min", String(f.bpm_min));
     if (f.bpm_max) p.set("bpm_max", String(f.bpm_max));
     if (f.camelot) p.set("camelot", f.camelot);
+    if (f.genre) p.set("genre", f.genre);
+    if (f.file_state) p.set("file_state", f.file_state);
     return req<{ tracks: DjTrack[] }>(`/api/dj/tracks?${p}`);
   },
   djImport: (path: string) => req<ImportResult>("/api/dj/import", post({ path })),
   djCompatibility: (ids: string[]) => req<{ ratings: Rating[] }>("/api/dj/compatibility", post({ ids })),
-  djEnergy: (ids: string[]) => req<{ energy: Record<string, number | null> }>("/api/dj/energy", post({ ids })),
+  djEnergy: (ids: string[]) => req<EnergyResult>("/api/dj/energy", post({ ids })),
   djExport: (name: string, ids: string[]) => req<{ playlist: string }>("/api/dj/export", post({ name, ids })),
 };
