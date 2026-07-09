@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
@@ -91,8 +91,25 @@ function JobCard({ job, open, onToggle, onRetry, retrying }: {
   return (
     <div className="px-4 py-3">
       <div
-        className={cn("flex items-center gap-3", clickable && "cursor-pointer select-none")}
+        className={cn(
+          "flex items-center gap-3 rounded-sm",
+          clickable && "cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card",
+        )}
         onClick={clickable ? onToggle : undefined}
+        {...(clickable
+          ? {
+              role: "button",
+              tabIndex: 0,
+              "aria-expanded": open,
+              "aria-label": `${open ? "Hide" : "Show"} failures for ${title}`,
+              onKeyDown: (e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onToggle();
+                }
+              },
+            }
+          : {})}
       >
         <div className={ART} style={image ? { backgroundImage: `url('${image}')` } : undefined}>
           {!image && <span className="grid h-full w-full place-items-center text-muted-foreground">♪</span>}

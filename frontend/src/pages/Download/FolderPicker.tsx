@@ -77,7 +77,7 @@ export function FolderPicker({ value, onChange }: { value: string; onChange: (v:
           <DialogTitle className="sr-only">Choose output folder</DialogTitle>
           <Command filter={(v, s) => (v.toLowerCase().includes(s.toLowerCase()) ? 1 : 0)} className="rounded-none bg-transparent">
             <div className="flex items-center gap-1 border-b border-border/60 pl-2">
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" disabled={!parent} title="Up one level" onClick={() => parent && browseTo(parent)}>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" disabled={!parent} title="Up one level" aria-label="Up one level" onClick={() => parent && browseTo(parent)}>
                 <ChevronUp className="h-4 w-4" />
               </Button>
               <CommandInput value={filter} onValueChange={setFilter} placeholder="Filter folders…" className="border-0" />

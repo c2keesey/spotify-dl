@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Folder, RotateCw } from "lucide-react";
 import { toast } from "sonner";
@@ -56,7 +56,12 @@ export function LibraryPanel({ outdir }: { outdir: string }) {
   const jobs = useQuery({ queryKey: qk.jobs, queryFn: api.jobs });
   const settledSig = (jobs.data ?? [])
     .filter((j) => j.status !== "running").map((j) => j.id).sort((a, b) => a - b).join(",");
+  // Skip the mount run: the library query already fetches on mount, so firing an
+  // invalidate for the initial (empty) signature would just double the request.
+  // Only a *change* in the settled set (a download finished) should refresh.
+  const firstSig = useRef(true);
   useEffect(() => {
+    if (firstSig.current) { firstSig.current = false; return; }
     queryClient.invalidateQueries({ queryKey: ["library"] });
   }, [settledSig]);
 

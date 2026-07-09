@@ -73,12 +73,18 @@ export function AuditionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Spacebar toggles the current track — unless focus is in a text field or on a
-  // button (whose own space-activate would otherwise double-fire).
+  // control that space-activates itself (a real button, or anything role="button"
+  // such as a draggable set slot, whose Space picks it up for keyboard reorder).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.code !== "Space" || !current) return;
       const el = e.target as HTMLElement;
-      if (["INPUT", "TEXTAREA", "BUTTON"].includes(el.tagName) || el.isContentEditable) return;
+      if (
+        ["INPUT", "TEXTAREA", "BUTTON"].includes(el.tagName) ||
+        el.getAttribute("role") === "button" ||
+        el.isContentEditable
+      )
+        return;
       e.preventDefault();
       toggle(current);
     }

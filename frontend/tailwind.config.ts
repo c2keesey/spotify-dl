@@ -1,12 +1,14 @@
 import type { Config } from "tailwindcss";
 
 export default {
-  darkMode: ["class", ".light &"] as unknown as Config["darkMode"], // dark default; .light opts out
+  // No `dark:` variant is used — theming is a plain `.light` class toggled on
+  // <html> against a dark-by-default `:root`, so no darkMode config is needed.
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
-  // `.light` (and panel utilities used by later tasks) aren't referenced in markup
-  // yet, so Tailwind's content tree-shaking would purge these hand-written @layer
-  // rules. Safelist keeps the light-mode override + panel atmosphere intact.
-  safelist: ["light", "grain", "panel-label", "scanlines", "bevel", "led-glow", "press"],
+  // `.light` is only ever applied via classList.toggle(), never as a literal
+  // className the content scanner can see, so it must be safelisted or the
+  // light-mode override gets purged. The panel utilities (grain/bevel/…) all
+  // appear as literal classNames in the source, so the scanner keeps them.
+  safelist: ["light"],
   theme: {
     extend: {
       fontFamily: {

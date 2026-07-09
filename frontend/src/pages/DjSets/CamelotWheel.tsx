@@ -72,9 +72,16 @@ export function CamelotWheel({
             const on = present.has(code);
             const g = segmentGeometry(n, ring);
             const label = counts[code] ? `${code}·${counts[code]}` : code;
+            const aria = counts[code]
+              ? `Filter tracks by key ${code} — ${counts[code]} in set`
+              : `Filter tracks by key ${code}`;
             return (
               <g key={code}>
                 <path
+                  className="wheel-seg"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={aria}
                   d={g.path}
                   fill={camelotColor(code)}
                   opacity={on ? 1 : 0.16}
@@ -85,6 +92,12 @@ export function CamelotWheel({
                     filter: on ? "drop-shadow(0 0 3px hsl(var(--led) / 0.55))" : undefined,
                   }}
                   onClick={() => onSegmentClick(code)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSegmentClick(code);
+                    }
+                  }}
                 />
                 <text
                   x={g.labelX}

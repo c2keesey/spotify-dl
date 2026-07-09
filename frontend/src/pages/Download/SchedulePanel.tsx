@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { api } from "@/lib/api";
 import { qk, queryClient } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { clampHours } from "./schedule";
 import type { Cron } from "@/lib/types";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -47,7 +48,7 @@ export function SchedulePanel({ validUrls, outdir, editing, onDone }: {
   const save = useMutation({
     mutationFn: () => {
       const [hour, minute] = (time || "03:00").split(":").map(Number);
-      const body = { urls: validUrls, output: outdir.trim(), freq, hour, minute, dow, every };
+      const body = { urls: validUrls, output: outdir.trim(), freq, hour, minute, dow, every: clampHours(every) };
       return editing ? api.cronUpdate(editing.id, body) : api.cronCreate(body);
     },
     onSuccess: () => {
@@ -99,7 +100,7 @@ export function SchedulePanel({ validUrls, outdir, editing, onDone }: {
           ) : (
             <div className="flex items-center gap-1.5">
               <span className="panel-label">every</span>
-              <Input type="number" min={1} max={23} value={every} onChange={(e) => setEvery(Number(e.target.value))} className="h-8 w-16" />
+              <Input type="number" min={1} max={23} value={every} onChange={(e) => setEvery(clampHours(e.target.value))} className="h-8 w-16" />
               <span className="panel-label">hrs</span>
             </div>
           )}

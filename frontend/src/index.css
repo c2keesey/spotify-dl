@@ -87,6 +87,10 @@
   }
   /* 1px inner bevel like brushed panels */
   .bevel { box-shadow: inset 0 1px 0 hsl(var(--panel-bevel) / 0.55); }
+  /* keyboard focus for the SVG key-wheel segments (ring/box-shadow don't apply to
+     SVG children, so use an outline the segment's bbox can carry) */
+  .wheel-seg { outline: none; }
+  .wheel-seg:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
   .led-glow { box-shadow: 0 0 6px 1px hsl(var(--led) / 0.55); }
   .press:active { transform: translateY(1px); }
 }

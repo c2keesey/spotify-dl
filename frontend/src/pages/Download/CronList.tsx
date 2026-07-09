@@ -29,11 +29,19 @@ const cronSub = (c: Cron) => {
 };
 
 /** Scheduled-crons list: power-switch toggle, managed-only edit/armed-delete. */
-export function CronList({ editingId, onEdit }: { editingId: string | null; onEdit: (c: Cron) => void }) {
+export function CronList({ editingId, onEdit, onDeleted }: {
+  editingId: string | null;
+  onEdit: (c: Cron) => void;
+  /** Fired after a cron is deleted so the edit flow can drop stale edit state. */
+  onDeleted?: (id: string) => void;
+}) {
   const crons = useQuery({ queryKey: qk.crons, queryFn: api.crons, refetchInterval: 30000 });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: qk.crons });
   const toggle = useMutation({ mutationFn: (id: string) => api.cronToggle(id), onSuccess: invalidate });
-  const del = useMutation({ mutationFn: (id: string) => api.cronDelete(id), onSuccess: invalidate });
+  const del = useMutation({
+    mutationFn: (id: string) => api.cronDelete(id),
+    onSuccess: (_, id) => { invalidate(); onDeleted?.(id); },
+  });
   const list = crons.data ?? [];
 
   return (
@@ -81,6 +89,7 @@ function CronRow({ c, editing, onToggle, onEdit, onDelete }: {
       <Switch
         checked={c.enabled}
         onCheckedChange={onToggle}
+        aria-label={`${c.enabled ? "Disable" : "Enable"} schedule ${cronTitle(c)}`}
         className="data-[state=checked]:bg-led data-[state=checked]:shadow-[0_0_6px_hsl(var(--led)/0.5)]"
       />
       <div className="min-w-0 flex-1" title={c.command}>

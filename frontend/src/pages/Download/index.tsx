@@ -6,6 +6,7 @@ import { JobsPanel } from "./JobsPanel";
 import { LibraryPanel } from "./LibraryPanel";
 import { CronList } from "./CronList";
 import { usePreviews } from "./usePreviews";
+import { parseLinks } from "./links";
 import type { Cron } from "@/lib/types";
 
 /**
@@ -16,7 +17,7 @@ import type { Cron } from "@/lib/types";
 export function DownloadPage({ outdir, setOutdir }: { outdir: string; setOutdir: (v: string) => void }) {
   const [text, setText] = useState("");
   const [editingCron, setEditingCron] = useState<Cron | null>(null);
-  const urls = useMemo(() => text.split("\n").map((s) => s.trim()).filter(Boolean), [text]);
+  const urls = useMemo(() => parseLinks(text), [text]);
   const preview = usePreviews(urls);
 
   const onEdit = (c: Cron) => {
@@ -55,7 +56,11 @@ export function DownloadPage({ outdir, setOutdir }: { outdir: string; setOutdir:
         <LibraryPanel outdir={outdir} />
       </div>
       <div style={{ animationDelay: "280ms" }} className="animate-[fadeUp_.4s_ease_both]">
-        <CronList editingId={editingCron?.id ?? null} onEdit={onEdit} />
+        <CronList
+          editingId={editingCron?.id ?? null}
+          onEdit={onEdit}
+          onDeleted={(id) => setEditingCron((c) => (c?.id === id ? null : c))}
+        />
       </div>
     </div>
   );

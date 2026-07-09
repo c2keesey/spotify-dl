@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
@@ -10,6 +11,7 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -88,6 +90,7 @@ function Slot({
       style={{ transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined, transition }}
       className={cn(
         "bevel flex cursor-grab items-center gap-3 rounded-md border border-border/60 bg-card px-3 py-2 active:cursor-grabbing",
+        "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
         isDragging && "z-10 opacity-80 shadow-lg",
       )}
       {...attributes}
@@ -159,7 +162,12 @@ export function SetRail({
   onReorder: (from: number, to: number) => void;
 }) {
   const { undo, canUndo, clear } = useSetState();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    // Keyboard path: Tab to a slot, Space to pick it up, arrows to move, Space to
+    // drop, Esc to cancel. dnd-kit's own live-region announces each step.
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const compatQ = useQuery({
     queryKey: qk.djCompat(setIds),
