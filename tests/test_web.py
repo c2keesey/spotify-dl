@@ -1070,6 +1070,156 @@ def test_assets_blocks_traversal(client, monkeypatch, tmp_path):
     assert exc.value.status_code == 404
 
 
+# ---- dj: flightcase bundle + cues xml (read-only; no master.db write) ----
+#
+# SETS_DIR and BUNDLES_DIR are redirected to tmp dirs and load_tracks is stubbed,
+# so nothing here reads or writes the real sets/, bundles/, or master.db.
+
+import io
+import wave
+import zipfile
+import xml.etree.ElementTree as ET
+
+
+def _sine_wav(path):
+    """A tiny real wav so bundle.peaks can decode it via ffmpeg."""
+    import math
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        frames = bytearray()
+        for i in range(8000):        # 1 second
+            v = int(30000 * math.sin(2 * math.pi * 440 * i / 8000))
+            frames += v.to_bytes(2, "little", signed=True)
+        w.writeframes(bytes(frames))
+    return str(path)
+
+
+@pytest.fixture
+def flightcase_client(monkeypatch, tmp_path):
+    """A client with tmp SETS_DIR + BUNDLES_DIR; caller stubs load_tracks."""
+    monkeypatch.setattr(web, "SETS_DIR", tmp_path / "sets")
+    monkeypatch.setattr(web, "BUNDLES_DIR", tmp_path / "bundles")
+    web._NOT_IMPORTED_CACHE.clear()
+    return TestClient(web.app)
+
+
+# ---- POST /api/dj/bundle ----
+
+def test_bundle_unknown_set_404(flightcase_client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [DJTRACK()])
+    r = flightcase_client.post("/api/dj/bundle", json={"set": "ghost"})
+    assert r.status_code == 404
+
+
+def test_bundle_streams_zip_and_skip_header(flightcase_client, monkeypatch, tmp_path):
+    a = _sine_wav(tmp_path / "a.wav")
+    b = _sine_wav(tmp_path / "b.wav")
+    tracks = [
+        DJTRACK(id="1", title="One", file_path=a, file_state="present"),
+        DJTRACK(id="2", title="Two", file_path=b, file_state="present"),
+        DJTRACK(id="3", title="Gone", file_path="/lib/gone.wav",
+                file_state="missing"),
+    ]
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: tracks)
+    flightcase_client.post("/api/dj/sets", json={"name": "Night", "ids": ["1", "2", "3"]})
+
+    r = flightcase_client.post("/api/dj/bundle", json={"set": "Night"})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    assert ".crate" in r.headers["content-disposition"]
+    assert r.headers["x-skipped-tracks"] == "1"        # the missing-file track
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        import json as _json
+        m = _json.loads(z.read("manifest.json"))
+        assert [t["id"] for t in m["tracks"]] == ["1", "2"]
+
+
+def test_bundle_nothing_present_400(flightcase_client, monkeypatch):
+    tracks = [DJTRACK(id="1", title="Gone", file_path="/lib/gone.wav",
+                      file_state="missing")]
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: tracks)
+    flightcase_client.post("/api/dj/sets", json={"name": "Empty", "ids": ["1"]})
+    r = flightcase_client.post("/api/dj/bundle", json={"set": "Empty"})
+    assert r.status_code == 400
+    assert "skipped" in r.json()["detail"].lower()
+
+
+def test_bundle_no_resolvable_tracks_400(flightcase_client, monkeypatch, tmp_path):
+    """A saved set whose entries no longer resolve to the live collection is a
+    clean 400, not a 500 from bundling an empty track list."""
+    a = _sine_wav(tmp_path / "a.wav")
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="1", file_path=a)])
+    flightcase_client.post("/api/dj/sets", json={"name": "Set", "ids": ["1"]})
+    # library rebuilt: neither id nor path matches the stored entry
+    monkeypatch.setattr(web.rekordbox, "load_tracks",
+                        lambda: [DJTRACK(id="OTHER", file_path="/lib/other.wav")])
+    r = flightcase_client.post("/api/dj/bundle", json={"set": "Set"})
+    assert r.status_code == 400
+
+
+# ---- POST /api/dj/cues/xml ----
+
+def _cues_payload(**kw):
+    base = {
+        "schema": 1, "set": "helens-set", "name": "Helen Set",
+        "order": ["2", "1"],
+        "tracks": [
+            {"id": "1", "cues": [{"num": 0, "name": "drop", "start": 10.0, "end": None}]},
+            {"id": "2", "cues": [{"num": 1, "name": "loop", "start": 5.0, "end": 20.0}]},
+        ],
+    }
+    base.update(kw)
+    return base
+
+
+def test_cues_xml_roundtrip(flightcase_client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", file_path="/lib/a.mp3"),
+        DJTRACK(id="2", file_path="/lib/b.mp3"),
+    ])
+    r = flightcase_client.post("/api/dj/cues/xml", json={"cues": _cues_payload()})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/xml")
+    assert r.headers["x-unknown-ids"] == ""
+    root = ET.fromstring(r.text)
+    plnode = root.find(".//PLAYLISTS/NODE/NODE")
+    assert [t.get("Key") for t in plnode.findall("TRACK")] == ["2", "1"]  # set order
+    assert root.findall(".//COLLECTION/TRACK/POSITION_MARK")              # cues emitted
+
+
+def test_cues_xml_reports_unknown_ids(flightcase_client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [
+        DJTRACK(id="1", file_path="/lib/a.mp3"),
+        DJTRACK(id="2", file_path="/lib/b.mp3"),
+    ])
+    payload = _cues_payload(order=["2", "1", "999"])
+    r = flightcase_client.post("/api/dj/cues/xml", json={"cues": payload})
+    assert r.status_code == 200
+    assert r.headers["x-unknown-ids"] == "999"
+    root = ET.fromstring(r.text)
+    keys = [t.get("Key") for t in root.findall(".//PLAYLISTS/NODE/NODE/TRACK")]
+    assert keys == ["2", "1"]                          # 999 dropped, known emitted
+
+
+def test_cues_xml_invalid_payload_400(flightcase_client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [DJTRACK(id="1")])
+    r = flightcase_client.post("/api/dj/cues/xml",
+                               json={"cues": _cues_payload(schema=2)})
+    assert r.status_code == 400
+    assert "schema" in r.json()["detail"].lower()
+
+
+def test_cues_xml_no_known_ids_400(flightcase_client, monkeypatch):
+    monkeypatch.setattr(web.rekordbox, "load_tracks", lambda: [DJTRACK(id="1")])
+    payload = _cues_payload(order=["999"],
+                            tracks=[{"id": "999", "cues": []}])
+    r = flightcase_client.post("/api/dj/cues/xml", json={"cues": payload})
+    assert r.status_code == 400
+
+
 def test_import_invalidates_the_not_imported_cache(monkeypatch, tmp_path, client):
     """After an import, the status banner must stop offering the same files.
     Without invalidation it kept saying "Import N" for the cache's whole TTL."""

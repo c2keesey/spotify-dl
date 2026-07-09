@@ -28,13 +28,14 @@ from pydantic import BaseModel
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
 
-from spotify_dl import dj, rekordbox, setfile
+from spotify_dl import bundle, dj, rekordbox, setfile
 from spotify_dl.spotify import get_item_name
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_OUTPUT = REPO_ROOT / "downloads"
 SETS_DIR = REPO_ROOT / "sets"
+BUNDLES_DIR = REPO_ROOT / "bundles"
 PORT = 8765
 
 app = FastAPI(title="spotify-dl")
@@ -1083,6 +1084,75 @@ def dj_export_xml(req: DJExportRequest):
         content=xml, media_type="application/xml",
         headers={"Content-Disposition":
                  f'attachment; filename="{setfile._safe_name(name)}.xml"'})
+
+
+# ---- flightcase: bundle a set + turn its cues.json into rekordbox XML ----
+
+class BundleRequest(BaseModel):
+    set: str
+
+
+class CuesXmlRequest(BaseModel):
+    cues: dict
+
+
+@app.post("/api/dj/bundle")
+def dj_bundle(req: BundleRequest):
+    """Build a Flightcase .crate for a saved set. Read-only w.r.t. rekordbox:
+    resolves the set against the collection, copies audio byte-for-byte, and
+    never opens master.db for write — safe while rekordbox runs."""
+    m3u8 = setfile.find(SETS_DIR, req.set)
+    if m3u8 is None:
+        raise HTTPException(404, f"no set named {req.set!r}")
+    data = setfile.load(m3u8)
+    all_tracks = _dj_tracks_or_503()
+    by_id = {t["id"]: t for t in all_tracks}
+    by_path = {t["file_path"]: t for t in all_tracks if t.get("file_path")}
+    tracks, _, unresolved = setfile.resolve_entries(
+        data.get("tracks", []), by_id, by_path)
+    if not tracks:
+        raise HTTPException(400, "set resolves to no library tracks")
+    try:
+        path, skipped = bundle.build(tracks, data.get("name") or m3u8.stem,
+                                     m3u8.stem, BUNDLES_DIR)
+    except ValueError:
+        names = [f"{t.get('artist')} - {t.get('title')}" for t in tracks]
+        raise HTTPException(
+            400, "no tracks with a present audio file; skipped: "
+                 + "; ".join(names))
+    return FileResponse(
+        path, media_type="application/zip",
+        filename=f"{m3u8.stem}.crate",
+        headers={"X-Skipped-Tracks": str(len(skipped) + len(unresolved))})
+
+
+@app.post("/api/dj/cues/xml")
+def dj_cues_xml(req: CuesXmlRequest):
+    """Turn a Flightcase cues.json into rekordbox-importable XML with
+    POSITION_MARK hot cues. Unknown track ids are reported in a header and
+    the XML is emitted for the rest — the cues file is the irreplaceable
+    artifact and must not fail whole on a partial mismatch. Never opens
+    master.db for write; importing the XML is a manual, additive step that
+    always creates a NEW playlist."""
+    try:
+        parsed = bundle.parse_cues(req.cues)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    by_id = {t["id"]: t for t in _dj_tracks_or_503()}
+    wanted = list(dict.fromkeys(
+        [*parsed["order"], *parsed["cues"].keys()]))
+    known = [i for i in wanted if i in by_id]
+    unknown = [i for i in wanted if i not in by_id]
+    if not known:
+        raise HTTPException(400, "no track ids match the library")
+    tracks = [by_id[i] for i in known]
+    name = parsed["name"] or parsed["set"] or "Flightcase cues"
+    xml = setfile.to_rekordbox_xml(tracks, name, cues=parsed["cues"])
+    return Response(
+        content=xml, media_type="application/xml",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{setfile._safe_name(name)} cues.xml"',
+                 "X-Unknown-Ids": ",".join(unknown)})
 
 
 # ---- audition (stream a collection track's audio; THE security surface) ----
