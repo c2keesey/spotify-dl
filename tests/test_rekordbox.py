@@ -94,16 +94,20 @@ def REC(id, path="/lib/a.mp3", artist="Artist", title="Song", duration=200.0):
 
 def test_group_exact_path_duplicates():
     # Two rows pointing at the identical absolute file → a certain (exact) dup.
+    # REC(3) is the SAME song at a different path, so it is also a fuzzy sibling
+    # and must not be swallowed by the exact group.
     groups = rb.group_duplicates([
         REC(1, path="/lib/a.mp3"),
         REC(2, path="/lib/a.mp3"),
         REC(3, path="/lib/b.mp3"),
     ])
-    assert len(groups) == 1
-    g = groups[0]
-    assert g["reason"] == "exact_path"
-    assert g["compared"]["file_path"] == "/lib/a.mp3"
-    assert {t["id"] for t in g["tracks"]} == {"1", "2"}
+    exact = [g for g in groups if g["reason"] == "exact_path"]
+    fuzzy = [g for g in groups if g["reason"] == "fuzzy"]
+    assert len(exact) == 1
+    assert exact[0]["compared"]["file_path"] == "/lib/a.mp3"
+    assert {t["id"] for t in exact[0]["tracks"]} == {"1", "2"}
+    assert len(fuzzy) == 1
+    assert {t["file_path"] for t in fuzzy[0]["tracks"]} == {"/lib/a.mp3", "/lib/b.mp3"}
 
 
 def test_group_fuzzy_same_song_different_paths():
@@ -520,3 +524,29 @@ def test_export_rejects_unknown_ids(stub_export, monkeypatch):
 def test_export_rejects_empty(stub_export):
     with pytest.raises(ValueError):
         rb.export_playlist("X", [])
+
+
+def _rec(id, path, title="Song", artist="Artist", duration=200):
+    return {"id": id, "file_path": path, "title": title,
+            "artist": artist, "duration": duration}
+
+
+def test_group_exact_dup_does_not_hide_its_fuzzy_sibling():
+    """Two rows at /a.mp3 (exact) plus one same-song copy at /b.mp3. The /b.mp3
+    copy must still surface — excluding exact paths from the fuzzy pass would
+    leave it a singleton and drop it entirely."""
+    records = [_rec("1", "/lib/a.mp3"), _rec("2", "/lib/a.mp3"), _rec("3", "/lib/b.mp3")]
+    groups = rb.group_duplicates(records)
+    exact = [g for g in groups if g["reason"] == "exact_path"]
+    fuzzy = [g for g in groups if g["reason"] == "fuzzy"]
+    assert len(exact) == 1 and {t["id"] for t in exact[0]["tracks"]} == {"1", "2"}
+    assert len(fuzzy) == 1, "the /b.mp3 copy must appear in a fuzzy group"
+    paths = {t["file_path"] for t in fuzzy[0]["tracks"]}
+    assert paths == {"/lib/a.mp3", "/lib/b.mp3"}
+
+
+def test_group_exact_dup_alone_is_not_also_reported_as_fuzzy():
+    """A pure exact duplicate (no other copies) collapses to one representative,
+    so it never doubles as a fuzzy group."""
+    groups = rb.group_duplicates([_rec("1", "/lib/a.mp3"), _rec("2", "/lib/a.mp3")])
+    assert [g["reason"] for g in groups] == ["exact_path"]

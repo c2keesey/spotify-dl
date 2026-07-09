@@ -134,25 +134,30 @@ def group_duplicates(records):
     path) is `not_a_file`: it is a streaming pointer, not "the same file at two
     paths", so it is excluded from both passes. Missing / unmounted files stay
     in — the match runs on the DB's own artist/title/duration, so it NEVER
-    re-reads ID3 tags (926 of 1437 files aren't on disk to read). Exact dups are
-    never also reported as fuzzy."""
+    re-reads ID3 tags (926 of 1437 files aren't on disk to read).
+
+    The fuzzy pass sees ONE representative row per distinct path, including
+    paths that already formed an exact group. Excluding exact paths outright
+    would hide a duplicate: with two rows at /a.mp3 and one same-song copy at
+    /b.mp3, dropping both /a.mp3 rows leaves /b.mp3 alone in its title bucket,
+    _cluster discards the singleton, and the /b.mp3 copy appears in no group at
+    all — invisible in the screen built to surface it. Collapsing to one
+    representative per path keeps exact copies from re-reporting as fuzzy while
+    still letting their siblings cluster."""
     eligible = [r for r in records if os.path.isabs(r.get("file_path") or "")]
 
     by_path = {}
     for r in eligible:
         by_path.setdefault(r["file_path"], []).append(r)
-    exact, exact_paths = [], set()
-    for path, rs in sorted(by_path.items()):
-        if len(rs) > 1:
-            exact.append({"reason": "exact_path",
-                          "compared": {"file_path": path},
-                          "tracks": rs})
-            exact_paths.add(path)
+    exact = [{"reason": "exact_path",
+              "compared": {"file_path": path},
+              "tracks": rs}
+             for path, rs in sorted(by_path.items()) if len(rs) > 1]
 
     buckets = {}
-    for r in eligible:
-        if r["file_path"] not in exact_paths:
-            buckets.setdefault(norm_title(r["title"]), []).append(r)
+    for path in sorted(by_path):
+        rep = by_path[path][0]
+        buckets.setdefault(norm_title(rep["title"]), []).append(rep)
     fuzzy = []
     for nt in sorted(buckets):
         for cluster in _cluster(buckets[nt], _records_fuzzy_match):
