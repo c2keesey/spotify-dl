@@ -14,6 +14,7 @@ Crate never loses it) but omitted from the m3u8 and the XML, and it never
 becomes a `file://` Location.
 """
 
+import itertools
 import json
 import os
 import re
@@ -57,18 +58,42 @@ def _safe_int(s):
         return None
 
 
+def _one_line(s):
+    """An EXTINF label occupies exactly one line. A tag carrying an interior
+    newline would otherwise inject extra m3u8 directives and path entries."""
+    return re.sub(r"\s*[\r\n]+\s*", " ", (s or "")).strip()
+
+
 def _m3u8_text(tracks):
     lines = ["#EXTM3U"]
     for t in tracks:
         path = _track_path(t)
         if not _is_file_path(path):
             continue
-        artist = (t.get("artist") or "").strip()
-        title = (t.get("title") or "").strip()
+        artist = _one_line(t.get("artist"))
+        title = _one_line(t.get("title"))
         label = f"{artist} - {title}" if artist else title
         lines.append(f"#EXTINF:{_duration_secs(t)},{label}")
         lines.append(path)
     return "\n".join(lines) + "\n"
+
+
+def _claim_stem(d, stem, name):
+    """Pick a stem that won't clobber a different set. Re-saving the same set
+    (matching sidecar name) reuses its files; anything else uniquifies, because
+    distinct names can sanitize to the same stem ("My Set!" and "My Set?" both
+    become "My Set_") and losing a set to a punctuation collision is not ok."""
+    for n in itertools.count(1):
+        candidate = stem if n == 1 else f"{stem} ({n})"
+        m3u8_path = d / f"{candidate}.m3u8"
+        json_path = d / f"{candidate}.json"
+        if not m3u8_path.exists() and not json_path.exists():
+            return candidate
+        try:
+            if json.loads(json_path.read_text(encoding="utf-8")).get("name") == name:
+                return candidate  # same set, overwrite in place
+        except (OSError, ValueError):
+            pass  # unreadable or absent sidecar — treat as someone else's file
 
 
 def save(dir, name, tracks):
@@ -76,7 +101,7 @@ def save(dir, name, tracks):
     into `dir`, in set order. Returns the m3u8 Path."""
     d = Path(dir)
     d.mkdir(parents=True, exist_ok=True)
-    stem = _safe_name(name)
+    stem = _claim_stem(d, _safe_name(name), name)
     m3u8_path = d / f"{stem}.m3u8"
     json_path = d / f"{stem}.json"
     # Security boundary: both files must resolve to inside `dir`, never above it.

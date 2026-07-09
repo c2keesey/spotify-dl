@@ -165,7 +165,9 @@ def test_xml_omits_spotify_uri_tracks(tmp_path):
     root = ET.fromstring(xml)
     assert root.find("COLLECTION").get("Entries") == "1"
     assert "spotify:track:abc" not in xml
-    assert "spotify" not in xml.lower() or "file://" in xml   # never a file:// spotify uri
+    # A spotify: URI must never be dressed up as a file:// location.
+    locations = [t.get("Location") for t in root.find("COLLECTION")]
+    assert locations == ["file://localhost/lib/a.mp3"]
     locs = [t.get("Location") for t in root.find("COLLECTION").findall("TRACK")]
     assert all(l.startswith("file://localhost/") for l in locs)
 
@@ -257,3 +259,42 @@ def test_exports_never_touch_the_rekordbox_write_path(client, monkeypatch):
                        json={"name": "Live", "ids": ["1"]}).status_code == 200
     assert client.post("/api/dj/export/xml",
                        json={"name": "Live", "ids": ["1"]}).status_code == 200
+
+
+def test_save_uniquifies_when_distinct_names_collide(tmp_path):
+    """"My Set!" and "My Set?" both sanitize to "My Set_" — the second must not
+    silently destroy the first."""
+    a = setfile.save(tmp_path, "My Set!", [TRACK(id="1", file_path="/lib/a.mp3")])
+    b = setfile.save(tmp_path, "My Set?", [TRACK(id="2", file_path="/lib/b.mp3")])
+    assert a != b
+    assert setfile.load(a)["name"] == "My Set!"
+    assert setfile.load(b)["name"] == "My Set?"
+    assert [t["id"] for t in setfile.load(a)["tracks"]] == ["1"]
+    assert [t["id"] for t in setfile.load(b)["tracks"]] == ["2"]
+
+
+def test_save_same_name_overwrites_in_place(tmp_path):
+    """Re-saving the SAME set is an edit, not a new set — no "(2)" pileup."""
+    a = setfile.save(tmp_path, "Warehouse", [TRACK(id="1", file_path="/lib/a.mp3")])
+    b = setfile.save(tmp_path, "Warehouse", [TRACK(id="2", file_path="/lib/b.mp3")])
+    assert a == b
+    assert [t["id"] for t in setfile.load(a)["tracks"]] == ["2"]
+    assert sorted(p.name for p in tmp_path.glob("*.m3u8")) == ["Warehouse.m3u8"]
+
+
+def test_save_does_not_clobber_a_foreign_m3u8(tmp_path):
+    """A hand-made m3u8 with no sidecar belongs to someone else."""
+    (tmp_path / "Warehouse.m3u8").write_text("#EXTM3U\n/lib/theirs.mp3\n", encoding="utf-8")
+    p = setfile.save(tmp_path, "Warehouse", [TRACK(id="1", file_path="/lib/a.mp3")])
+    assert p.name == "Warehouse (2).m3u8"
+    assert "/lib/theirs.mp3" in (tmp_path / "Warehouse.m3u8").read_text()
+
+
+def test_m3u8_label_cannot_inject_directives(tmp_path):
+    """An interior newline in a tag must not become an extra m3u8 line."""
+    evil = TRACK(id="1", file_path="/lib/a.mp3",
+                 title="Boom\n/etc/evil.mp3\n#EXTINF:0,injected", artist="A\nB")
+    p = setfile.save(tmp_path, "Set", [evil])
+    lines = p.read_text(encoding="utf-8").strip().split("\n")
+    assert lines == ["#EXTM3U", "#EXTINF:200,A B - Boom /etc/evil.mp3 #EXTINF:0,injected", "/lib/a.mp3"]
+    assert [t["path"] for t in setfile.load(p)["tracks"]] == ["/lib/a.mp3"]
