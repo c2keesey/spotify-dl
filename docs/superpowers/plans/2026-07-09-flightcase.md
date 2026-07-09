@@ -797,3 +797,11 @@ export function storageEstimate(): Promise<{usage: number; quota: number}>;
 - Implementers dispatch **sequentially, one at a time** (project rule); reviewers may run in parallel with the next implementer; whole-branch review at the end.
 - Never haiku subagents; opus mostly, sonnet for the most mechanical tasks.
 - `bd` (beads) binary is not on PATH on this machine this session — tracked follow-ups land in the plan/commits; sync to beads when `bd` is available again.
+
+## Post-merge follow-ups (bd binary unavailable this session — sync to beads when it returns)
+
+- **On-device iPad pass (the one thing no review could supply):** `navigator.storage.persist()` grant behavior on a home-screen PWA, share-sheet cues export, AirDrop round-trip with a real bundle, gesture feel (pinch/long-press/swipe thresholds), playback of OPFS blob URLs in standalone Safari.
+- Deploy `companion/dist` to a static HTTPS host (Cloudflare Pages) and install on Helen's devices.
+- Deferred from spec: writing `DjmdCue` rows directly into master.db — only after the XML round trip is proven in practice.
+- Hardening follow-ups from reviews (all Minor): parse_cues duplicate-track-id / NaN / bool-slot rejection; bundle.build temp+rename atomicity + TimeoutExpired→ValueError; bundles/ TTL cleanup; djBundle error-path test; .woff dead weight in companion dist; App boot-to-Set-when-sets-exist; same-name overwrite residual on failed re-import.
+- Pre-existing test failures (not this feature): 5 live-Spotify genre-drift tests, test_progress_names_failed_track, test_youtube genre drift.
