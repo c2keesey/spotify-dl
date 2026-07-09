@@ -33,7 +33,7 @@ export function DjSetsPage({ outdir }: { outdir: string }) {
 
       <div
         style={{ animationDelay: "160ms" }}
-        className="grid animate-[fadeUp_.4s_ease_both] grid-cols-1 items-start gap-8 lg:grid-cols-[3fr_2fr]"
+        className="grid animate-[fadeUp_.4s_ease_both] grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_360px]"
       >
         <div className="space-y-3">
           <PanelHeader>Track Browser</PanelHeader>

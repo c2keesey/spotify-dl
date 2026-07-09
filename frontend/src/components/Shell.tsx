@@ -115,8 +115,10 @@ export function Shell({
         <div className="min-w-0 flex-1">
           <main
             className={cn(
-              "mx-auto w-full px-6 py-8 md:px-10 md:py-12",
-              wide ? "max-w-[1080px]" : "max-w-[720px]",
+              "w-full px-6 py-8 md:px-10 md:py-12",
+              // DJ Sets goes full-bleed to the viewport; Download keeps its
+              // narrower centered reading column.
+              wide ? "" : "mx-auto max-w-[720px]",
             )}
           >
             {children}

@@ -1,53 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/queries";
-import { camelotColor, CAMELOT_CODES } from "@/lib/camelot";
 import type { DjTrack } from "@/lib/types";
-
-const ANY = "__any__";
-
-/** One track row's key cell: colored Camelot badge, or a pulsing "analyzing…". */
-function KeyCell({ track }: { track: DjTrack }) {
-  if (track.camelot) {
-    return (
-      <Badge className="border-transparent font-mono text-white" style={{ background: camelotColor(track.camelot) }}>
-        {track.camelot}
-      </Badge>
-    );
-  }
-  if (track.status === "pending") {
-    return <span className="text-xs text-vfd motion-safe:animate-pulse">analyzing…</span>;
-  }
-  return <span className="text-muted-foreground">—</span>;
-}
+import {
+  distinctGenres,
+  filterTracks,
+  normalizeTrack,
+  sortTracks,
+  type FileStateFilter,
+  type SortDir,
+  type SortKey,
+} from "@/lib/trackSort";
+import { TrackFilters } from "./TrackFilters";
+import { TrackTable } from "./TrackTable";
 
 /**
- * Track browser: debounced text/BPM filters + an immediate Camelot Select feed a
- * `djTracks` query. Rows render in a scrollable table with a sticky header; the
- * Camelot badge is the color accent. Analyzed rows expose a "+ Set" button
- * (calls `onAdd`); rows already in the set show a disabled "Added".
- *
- * `camelotFilter` is lifted so Task 11's key wheel can toggle it.
+ * Track browser. Search / BPM / Camelot feed the server query; genre, duration,
+ * analyzed-only and file-state filter the cached list client-side, and every
+ * data column sorts. Set members survive filtering (the session cache lives in
+ * useSetState, read by the set rail). A failed fetch renders an error row with
+ * Retry — never a blank table or a toast loop. `camelotFilter` is lifted so the
+ * key wheel can toggle it.
  */
 export function TrackBrowser({
   camelotFilter,
@@ -63,15 +37,22 @@ export function TrackBrowser({
   const [q, setQ] = useState("");
   const [bpmMin, setBpmMin] = useState("");
   const [bpmMax, setBpmMax] = useState("");
+  const [genre, setGenre] = useState("");
+  const [fileState, setFileState] = useState<FileStateFilter>("any");
+  const [lenMin, setLenMin] = useState("");
+  const [lenMax, setLenMax] = useState("");
+  const [analyzedOnly, setAnalyzedOnly] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  // Debounce the free-text/number inputs 300ms; the Camelot Select is immediate.
+  // Debounce free-text/number inputs that hit the server; selects are immediate.
   const [debounced, setDebounced] = useState({ q: "", bpmMin: "", bpmMax: "" });
   useEffect(() => {
     const t = setTimeout(() => setDebounced({ q, bpmMin, bpmMax }), 300);
     return () => clearTimeout(t);
   }, [q, bpmMin, bpmMax]);
 
-  const filters = useMemo(
+  const serverFilters = useMemo(
     () => ({
       q: debounced.q.trim() || undefined,
       bpm_min: debounced.bpmMin ? Number(debounced.bpmMin) : undefined,
@@ -82,115 +63,66 @@ export function TrackBrowser({
   );
 
   const tracksQ = useQuery({
-    queryKey: qk.djTracks(filters),
-    queryFn: () => api.djTracks(filters),
+    queryKey: qk.djTracks(serverFilters),
+    queryFn: () => api.djTracks(serverFilters),
   });
 
-  const tracks = tracksQ.data?.tracks ?? [];
+  const all = useMemo(() => (tracksQ.data?.tracks ?? []).map(normalizeTrack), [tracksQ.data]);
+  const genres = useMemo(() => distinctGenres(all), [all]);
+
+  const rows = useMemo(() => {
+    const filtered = filterTracks(all, {
+      genre: genre || null,
+      durMin: lenMin ? Number(lenMin) * 60 : null,
+      durMax: lenMax ? Number(lenMax) * 60 : null,
+      analyzedOnly,
+      fileState,
+    });
+    return sortKey ? sortTracks(filtered, sortKey, sortDir) : filtered;
+  }, [all, genre, lenMin, lenMax, analyzedOnly, fileState, sortKey, sortDir]);
+
+  const onSort = (k: SortKey) => {
+    if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(k);
+      setSortDir("asc");
+    }
+  };
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search title or artist"
-          className="h-9 max-w-64"
-        />
-        <Input
-          value={bpmMin}
-          onChange={(e) => setBpmMin(e.target.value)}
-          type="number"
-          inputMode="numeric"
-          placeholder="BPM min"
-          className="h-9 w-24 font-mono tabular-nums"
-        />
-        <Input
-          value={bpmMax}
-          onChange={(e) => setBpmMax(e.target.value)}
-          type="number"
-          inputMode="numeric"
-          placeholder="BPM max"
-          className="h-9 w-24 font-mono tabular-nums"
-        />
-        <Select
-          value={camelotFilter || ANY}
-          onValueChange={(v) => setCamelotFilter(v === ANY ? "" : v)}
-        >
-          <SelectTrigger className="h-9 w-32">
-            <SelectValue placeholder="Any key" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ANY}>Any key</SelectItem>
-            {CAMELOT_CODES.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <ScrollArea className="h-[420px] rounded-lg border border-border/60 bg-card">
-        <Table>
-          <TableHeader className="sticky top-0 z-10 bg-card [&_th]:h-9">
-            <TableRow>
-              <TableHead className="w-8" />
-              <TableHead>Title</TableHead>
-              <TableHead>Artist</TableHead>
-              <TableHead className="w-20 text-right">BPM</TableHead>
-              <TableHead className="w-20">Key</TableHead>
-              <TableHead className="w-24" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tracks.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                  {tracksQ.isLoading ? "Loading tracks…" : "No tracks match."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              tracks.map((t) => {
-                const added = inSet.has(t.id);
-                return (
-                  <TableRow key={t.id} className="[&_td]:py-1.5">
-                    <TableCell className="text-center text-muted-foreground">
-                      {t.status === "pending" ? "⏳" : "·"}
-                    </TableCell>
-                    <TableCell className="max-w-0 truncate text-foreground" title={t.title}>
-                      {t.title}
-                    </TableCell>
-                    <TableCell className="max-w-0 truncate text-muted-foreground" title={t.artist}>
-                      {t.artist}
-                    </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
-                      {t.bpm != null ? t.bpm.toFixed(1) : ""}
-                    </TableCell>
-                    <TableCell>
-                      <KeyCell track={t} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {t.status === "analyzed" ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7"
-                          disabled={added}
-                          onClick={() => onAdd(t)}
-                        >
-                          {added ? "Added" : "+ Set"}
-                        </Button>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </ScrollArea>
+      <TrackFilters
+        q={q}
+        setQ={setQ}
+        bpmMin={bpmMin}
+        setBpmMin={setBpmMin}
+        bpmMax={bpmMax}
+        setBpmMax={setBpmMax}
+        camelot={camelotFilter}
+        setCamelot={setCamelotFilter}
+        genre={genre}
+        setGenre={setGenre}
+        fileState={fileState}
+        setFileState={setFileState}
+        lenMin={lenMin}
+        setLenMin={setLenMin}
+        lenMax={lenMax}
+        setLenMax={setLenMax}
+        analyzedOnly={analyzedOnly}
+        setAnalyzedOnly={setAnalyzedOnly}
+        genres={genres}
+      />
+      <TrackTable
+        rows={rows}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={onSort}
+        inSet={inSet}
+        onAdd={onAdd}
+        isError={tracksQ.isError}
+        isLoading={tracksQ.isLoading}
+        onRetry={() => tracksQ.refetch()}
+      />
     </div>
   );
 }
