@@ -1,4 +1,4 @@
-import { formatClock, formatDuration, totalRuntime } from "@/lib/format";
+import { formatClock, formatClockCs, formatDuration, totalRuntime } from "@/lib/format";
 
 describe("formatClock", () => {
   test("m:ss under an hour, zero-padded seconds", () => {
@@ -17,6 +17,25 @@ describe("formatClock", () => {
     expect(formatClock(65.4)).toBe("1:05");
     expect(formatClock(65.6)).toBe("1:06");
     expect(formatClock(-10)).toBe("0:00");
+  });
+});
+
+describe("formatClockCs", () => {
+  test("m:ss.cs with padded seconds and centiseconds", () => {
+    expect(formatClockCs(0)).toBe("0:00.00");
+    expect(formatClockCs(5.07)).toBe("0:05.07");
+    expect(formatClockCs(65.5)).toBe("1:05.50");
+    expect(formatClockCs(599.99)).toBe("9:59.99");
+  });
+
+  test("float noise from repeated 10ms nudges never shows a stale digit", () => {
+    let t = 0;
+    for (let i = 0; i < 820; i++) t += 0.01;
+    expect(formatClockCs(t)).toBe("0:08.20");
+  });
+
+  test("clamps negatives to zero", () => {
+    expect(formatClockCs(-3)).toBe("0:00.00");
   });
 });
 

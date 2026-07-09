@@ -15,6 +15,21 @@ export function formatClock(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 }
 
+/**
+ * `m:ss.cs` with centiseconds, for the transport readout — fine enough to see
+ * a ±10ms nudge move the number. Rounds to the nearest centisecond so float
+ * noise (8.2 → 819.99…cs) never shows a stale digit.
+ */
+export function formatClockCs(seconds: number): string {
+  const total = Math.max(0, seconds || 0);
+  const cs = Math.round(total * 100);
+  const m = Math.floor(cs / 6000);
+  const sec = Math.floor((cs % 6000) / 100);
+  const centi = cs % 100;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${m}:${pad(sec)}.${pad(centi)}`;
+}
+
 /** A track's length for a row cell. Blank when unknown. */
 export function formatDuration(sec: number | null): string {
   if (sec == null || !Number.isFinite(sec)) return "";

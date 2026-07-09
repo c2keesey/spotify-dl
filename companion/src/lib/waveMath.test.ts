@@ -1,4 +1,4 @@
-import { timeAtX, xAtTime, peakAtColumn, clampView } from "@/lib/waveMath";
+import { timeAtX, xAtTime, peakAtColumn, clampView, pinchView, panView } from "@/lib/waveMath";
 
 describe("timeAtX / xAtTime", () => {
   const view = { start: 0, end: 100 };
@@ -93,5 +93,70 @@ describe("clampView", () => {
 
   test("a view already inside bounds is unchanged", () => {
     expect(clampView({ start: 20, end: 40 }, 100)).toEqual({ start: 20, end: 40 });
+  });
+});
+
+describe("pinchView", () => {
+  const width = 400;
+  const duration = 200;
+
+  test("spreading fingers zooms in, keeping the anchored times under the fingers", () => {
+    const view = { start: 0, end: 200 };
+    // fingers start at x=100 (t=50) and x=300 (t=150), spread to x=0 and x=400
+    const next = pinchView(view, 100, 0, 300, 400, width, duration);
+    expect(timeAtX(0, width, next)).toBeCloseTo(50, 6);
+    expect(timeAtX(400, width, next)).toBeCloseTo(150, 6);
+    expect(next.end - next.start).toBeCloseTo(100, 6);
+  });
+
+  test("closing fingers zooms out, clamped to the track", () => {
+    const view = { start: 50, end: 150 };
+    // fingers at the canvas edges close toward the middle → span doubles
+    const next = pinchView(view, 0, 100, 400, 300, width, duration);
+    expect(next.end - next.start).toBeCloseTo(200, 6);
+    expect(next.start).toBeGreaterThanOrEqual(0);
+    expect(next.end).toBeLessThanOrEqual(duration);
+  });
+
+  test("cannot zoom past minSpan", () => {
+    const view = { start: 100, end: 103 };
+    // extreme spread
+    const next = pinchView(view, 190, 0, 210, 400, width, duration);
+    expect(next.end - next.start).toBeCloseTo(2, 6);
+  });
+
+  test("stationary translate (both fingers shift equally) pans without rescaling", () => {
+    const view = { start: 50, end: 100 };
+    const next = pinchView(view, 100, 60, 300, 260, width, duration);
+    expect(next.end - next.start).toBeCloseTo(50, 6);
+    // content moved left 40px → window moved 40/400 * 50s = 5s later
+    expect(next.start).toBeCloseTo(55, 6);
+  });
+
+  test("degenerate fingers (same x after) return the clamped current view", () => {
+    const view = { start: 0, end: 200 };
+    expect(pinchView(view, 100, 200, 300, 200, width, duration)).toEqual(view);
+    expect(pinchView(view, 150, 100, 150, 300, width, duration)).toEqual(view);
+  });
+});
+
+describe("panView", () => {
+  test("dragging content right shows earlier audio", () => {
+    const view = { start: 50, end: 100 };
+    // +100px over a 400px canvas showing 50s → window shifts 12.5s earlier
+    expect(panView(view, 100, 400, 200)).toEqual({ start: 37.5, end: 87.5 });
+  });
+
+  test("dragging content left shows later audio", () => {
+    const view = { start: 50, end: 100 };
+    expect(panView(view, -100, 400, 200)).toEqual({ start: 62.5, end: 112.5 });
+  });
+
+  test("clamps at the track edges, span preserved", () => {
+    const view = { start: 0, end: 50 };
+    const next = panView(view, 500, 400, 200);
+    expect(next).toEqual({ start: 0, end: 50 });
+    const tail = panView({ start: 150, end: 200 }, -500, 400, 200);
+    expect(tail).toEqual({ start: 150, end: 200 });
   });
 });
