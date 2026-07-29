@@ -13,7 +13,8 @@ from pathlib import Path
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
-from spotify_dl.constants import MANIFEST_FILENAME
+from spotify_dl.constants import MANIFEST_FILENAME, MATCHES_FILENAME
+from spotify_dl.resolver import MatchStore, TrackResolver, is_approved_decision
 from spotify_dl.scaffold import log, get_tokens
 from spotify_dl.spotify import fetch_tracks, parse_spotify_url, get_item_name
 from spotify_dl.utils import sanitize
@@ -147,8 +148,120 @@ def load_manifest(output_dir):
     manifest_path = Path(output_dir) / MANIFEST_FILENAME
     if manifest_path.exists():
         with open(manifest_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"version": 1, "cache": {}, "playlists": {}}
+            manifest = json.load(f)
+    else:
+        manifest = {}
+
+    manifest["version"] = 2
+    manifest.setdefault("cache", {})
+    manifest.setdefault("playlists", {})
+    manifest.setdefault("matches", {})
+    manifest.setdefault("playlist_url_cache", {})
+    for spotify_id, entry in manifest["cache"].items():
+        if entry.get("match"):
+            manifest["matches"].setdefault(spotify_id, entry["match"])
+    return manifest
+
+
+def get_verified_cache_entry(manifest, spotify_id):
+    """Return a cache entry only when its persisted source is approved."""
+    entry = manifest.get("cache", {}).get(spotify_id)
+    if not entry:
+        return None
+    cached_decision = entry.get("match")
+    current_decision = manifest.get("matches", {}).get(spotify_id) or cached_decision
+    if not (
+        is_approved_decision(cached_decision)
+        and is_approved_decision(current_decision)
+    ):
+        return None
+    cached_video_id = (cached_decision.get("source") or {}).get("video_id")
+    current_video_id = (current_decision.get("source") or {}).get("video_id")
+    return (
+        entry
+        if cached_video_id and cached_video_id == current_video_id
+        else None
+    )
+
+
+def audit_match_decisions(tracks, manifest, resolver):
+    """Resolve tracks without downloading or blessing opaque cache files."""
+    counts = {"verified": 0, "ambiguous": 0, "rejected": 0, "manual": 0}
+    for spotify_id in sorted(tracks):
+        decision = resolver.resolve(tracks[spotify_id])
+        manifest["matches"][spotify_id] = decision
+        counts[decision["status"]] += 1
+
+        entry = manifest["cache"].get(spotify_id)
+        if not entry:
+            continue
+        cached_decision = entry.get("match")
+        cached_video_id = ((cached_decision or {}).get("source") or {}).get(
+            "video_id"
+        )
+        resolved_video_id = (decision.get("source") or {}).get("video_id")
+        if (
+            is_approved_decision(cached_decision)
+            and is_approved_decision(decision)
+            and cached_video_id
+            and cached_video_id == resolved_video_id
+        ):
+            entry["match"] = decision
+            entry["match_status"] = decision["status"]
+        else:
+            entry["match_status"] = (
+                decision["status"]
+                if decision["status"] in {"ambiguous", "rejected"}
+                else "stale"
+            )
+    return counts
+
+
+def apply_manual_decision(manifest, spotify_id, decision):
+    """Make a manual override authoritative without relabeling old audio."""
+    manifest["matches"][spotify_id] = decision
+    entry = manifest["cache"].get(spotify_id)
+    if not entry:
+        return
+    cached_video_id = ((entry.get("match") or {}).get("source") or {}).get(
+        "video_id"
+    )
+    manual_video_id = (decision.get("source") or {}).get("video_id")
+    if (
+        decision["status"] == "manual"
+        and cached_video_id
+        and cached_video_id == manual_video_id
+    ):
+        entry["match"] = decision
+        entry["match_status"] = "manual"
+    else:
+        entry["match_status"] = (
+            "rejected" if decision["status"] == "rejected" else "stale"
+        )
+
+
+def classify_sync_actions(
+    current_songs,
+    previous_songs,
+    manifest,
+    cache_dir,
+    playlist_dir,
+):
+    """Classify current membership by verified file availability."""
+    needs_copy = []
+    needs_download = []
+    for spotify_id in sorted(current_songs):
+        entry = get_verified_cache_entry(manifest, spotify_id)
+        if not entry or not (cache_dir / entry["filename"]).exists():
+            needs_download.append(spotify_id)
+        elif not (playlist_dir / entry["filename"]).exists():
+            needs_copy.append(spotify_id)
+    return {
+        "to_add": set(needs_download) | set(needs_copy),
+        "to_remove": set(previous_songs) - set(current_songs),
+        "needs_copy": needs_copy,
+        "needs_download": needs_download,
+    }
 
 
 def save_manifest(output_dir, manifest):
@@ -187,7 +300,7 @@ def generate_filename(track, max_bytes=200):
 def download_to_cache_batch(tracks, cache_dir, config, multi_core=0):
     """
     Download multiple songs to cache directory using multi-core support.
-    Returns dict mapping spotify_id -> filename for successful downloads.
+    Returns every match decision and a filename only for approved downloads.
 
     Args:
         tracks: List of (spotify_id, track_dict) tuples
@@ -197,20 +310,22 @@ def download_to_cache_batch(tracks, cache_dir, config, multi_core=0):
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Filter out tracks already in cache
     to_download = []
-    results = {}
+    backups = {}
     for spotify_id, track in tracks:
         filename = generate_filename(track) + ".mp3"
+        to_download.append((spotify_id, track, filename))
         file_path = cache_dir / filename
         if file_path.exists():
-            log.info("Already in cache: %s", filename)
-            results[spotify_id] = filename
-        else:
-            to_download.append((spotify_id, track, filename))
+            file_descriptor, backup_path = tempfile.mkstemp(
+                dir=cache_dir, suffix=".spotify-dl-backup"
+            )
+            os.close(file_descriptor)
+            os.replace(file_path, backup_path)
+            backups[spotify_id] = Path(backup_path)
 
     if not to_download:
-        return results
+        return {}
 
     # Prepare batch for download_songs
     songs_list = [track for _, track, _ in to_download]
@@ -219,7 +334,7 @@ def download_to_cache_batch(tracks, cache_dir, config, multi_core=0):
     log.info("Downloading %d songs with %d cores", len(to_download), multi_core or 1)
 
     try:
-        download_songs(
+        decisions = download_songs(
             songs=songs_data,
             output_dir=str(cache_dir),
             format_str=config.get("format_str", "bestaudio/best"),
@@ -232,22 +347,44 @@ def download_to_cache_batch(tracks, cache_dir, config, multi_core=0):
             multi_core=multi_core,
             proxy=config.get("proxy", ""),
             cookies_from_browser=config.get("cookies_from_browser"),
+            match_store_path=config.get("_match_store_path"),
         )
     except Exception as e:
         log.error("Batch download error: %s", e)
+        decisions = {}
 
-    # Check which downloads succeeded
+    results = {}
     for spotify_id, track, filename in to_download:
         file_path = cache_dir / filename
-        if file_path.exists():
-            results[spotify_id] = filename
-        else:
+        decision = decisions.get(spotify_id)
+        approved_filename = (
+            filename if is_approved_decision(decision) and file_path.exists() else None
+        )
+        backup_path = backups.get(spotify_id)
+        if approved_filename:
+            if backup_path:
+                backup_path.unlink()
+        elif backup_path:
+            os.replace(backup_path, file_path)
+        results[spotify_id] = {
+            "filename": approved_filename,
+            "match": decision,
+        }
+        if is_approved_decision(decision) and not approved_filename:
             log.warning("Download may have failed for: %s", track["name"])
 
     return results
 
 
-def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=0):
+def run_sync(
+    config_path,
+    dry_run=False,
+    limit=0,
+    limit_playlists=0,
+    multi_core=0,
+    match_store_path=None,
+    audit_matches=False,
+):
     """
     Main sync function.
     Fetches current playlist state from Spotify and syncs local directories.
@@ -258,6 +395,8 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
         limit: Max songs to download (0 = no limit)
         limit_playlists: Max playlists to process (0 = no limit)
         multi_core: Number of CPU cores for parallel downloads (0 = single core)
+        match_store_path: Optional override for the persistent match store
+        audit_matches: Resolve and persist decisions without downloading
     """
     config = load_config(config_path)
     output_dir = Path(config["output_dir"])
@@ -265,6 +404,10 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
 
     manifest = load_manifest(output_dir)
     cache_dir = output_dir / ".cache"
+    config["_match_store_path"] = str(
+        match_store_path or output_dir / MATCHES_FILENAME
+    )
+    match_store = MatchStore(config["_match_store_path"])
 
     tokens = get_tokens()
     if tokens is None:
@@ -347,6 +490,14 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
         log.info("Fetching tracks from: %s", playlist_name)
 
         tracks = fetch_tracks(sp, "playlist", playlist_id)
+        for track in tracks:
+            manual_decision = match_store.manual_decision_for(track)
+            if manual_decision is not None:
+                apply_manual_decision(
+                    manifest,
+                    track["spotify_id"],
+                    manual_decision,
+                )
         playlist_songs[playlist_id] = {t["spotify_id"]: t for t in tracks}
 
         folder = get_playlist_folder(playlist_name, config.get("_folder_mapping", {}))
@@ -361,6 +512,43 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
         else:
             # Update folder if changed
             manifest["playlists"][playlist_id]["folder"] = folder
+
+    if audit_matches:
+        audit_tracks = {
+            spotify_id: track
+            for songs in playlist_songs.values()
+            for spotify_id, track in songs.items()
+            if spotify_id
+        }
+        for spotify_id in manifest["cache"]:
+            if spotify_id in audit_tracks:
+                continue
+            try:
+                fetched = fetch_tracks(sp, "track", spotify_id)
+            except Exception as error:
+                log.warning(
+                    "Could not fetch Spotify metadata for cached track %s: %s",
+                    spotify_id,
+                    error,
+                )
+                continue
+            if fetched:
+                audit_tracks[spotify_id] = fetched[0]
+
+        counts = audit_match_decisions(
+            audit_tracks,
+            manifest,
+            TrackResolver(match_store),
+        )
+        save_manifest(output_dir, manifest)
+        log.info(
+            "Match audit complete: %d verified, %d manual, %d ambiguous, %d rejected",
+            counts["verified"],
+            counts["manual"],
+            counts["ambiguous"],
+            counts["rejected"],
+        )
+        return counts
 
     total_to_download = 0
     total_to_copy = 0
@@ -381,11 +569,17 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
         prev_songs = set(manifest["playlists"].get(playlist_id, {}).get("songs", []))
         curr_songs = set(songs.keys())
 
-        to_add = curr_songs - prev_songs
-        to_remove = prev_songs - curr_songs
-
-        needs_download = [sid for sid in to_add if sid not in manifest["cache"]]
-        needs_copy = [sid for sid in to_add if sid in manifest["cache"]]
+        sync_actions = classify_sync_actions(
+            curr_songs,
+            prev_songs,
+            manifest,
+            cache_dir,
+            playlist_dir,
+        )
+        to_add = sync_actions["to_add"]
+        to_remove = sync_actions["to_remove"]
+        needs_copy = sync_actions["needs_copy"]
+        needs_download = sync_actions["needs_download"]
 
         total_to_download += len(needs_download)
         total_to_copy += len(needs_copy)
@@ -463,9 +657,10 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
         playlist_dir = action["playlist_dir"]
         playlist_dir.mkdir(parents=True, exist_ok=True)
         for sid in action["needs_copy"]:
-            if sid not in manifest["cache"]:
+            entry = get_verified_cache_entry(manifest, sid)
+            if not entry:
                 continue
-            filename = manifest["cache"][sid]["filename"]
+            filename = entry["filename"]
             src = cache_dir / filename
             dst = playlist_dir / filename
             if src.exists() and not dst.exists():
@@ -487,13 +682,25 @@ def run_sync(config_path, dry_run=False, limit=0, limit_playlists=0, multi_core=
         downloaded = download_to_cache_batch(batch, cache_dir, config, multi_core)
 
         # Update manifest and copy to playlists for this batch
-        for sid, filename in downloaded.items():
+        for sid, outcome in downloaded.items():
             track = next(t for s, t in batch if s == sid)
+            decision = outcome["match"]
+            if decision:
+                manifest["matches"][sid] = decision
+            filename = outcome["filename"]
+            if not filename:
+                if sid in manifest["cache"] and decision:
+                    manifest["cache"][sid]["match"] = decision
+                    manifest["cache"][sid]["match_status"] = decision["status"]
+                continue
             manifest["cache"][sid] = {
                 "name": track["name"],
                 "artist": track["artist"],
                 "filename": filename,
                 "downloaded_at": datetime.now().isoformat(),
+                "youtube_video_id": decision["source"]["video_id"],
+                "match_status": decision["status"],
+                "match": decision,
             }
 
             # Copy to all playlists that need this song
@@ -591,10 +798,11 @@ def run_repair(config_path, dry_run=False):
         # Find songs that are in cache but not in playlist folder
         copied_this_playlist = 0
         for sid in current_songs:
-            if sid not in manifest["cache"]:
+            entry = get_verified_cache_entry(manifest, sid)
+            if not entry:
                 continue
 
-            filename = manifest["cache"][sid]["filename"]
+            filename = entry["filename"]
             src = cache_dir / filename
             dst = playlist_dir / filename
 

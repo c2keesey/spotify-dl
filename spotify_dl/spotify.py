@@ -24,7 +24,7 @@ def fetch_tracks(sp, item_type, item_id):
                     playlist_id=item_id,
                     fields="items.track.name,items.track.artists(name, uri),"
                     "items.track.album(name, release_date, total_tracks, images),"
-                    "items.track.track_number,total, next,offset,"
+                    "items.track.track_number,items.track.duration_ms,total, next,offset,"
                     "items.track.id",
                     additional_types=["track"],
                     offset=offset,
@@ -44,6 +44,7 @@ def fetch_tracks(sp, item_type, item_id):
                     track_num = track_info.get("track_number")
                     track_name = track_info.get("name")
                     spotify_id = track_info.get("id")
+                    duration_ms = track_info.get("duration_ms")
                     tempo = None
                     track_artist = ", ".join(
                         [artist["name"] for artist in track_info.get("artists") if artist.get("name")]
@@ -74,6 +75,7 @@ def fetch_tracks(sp, item_type, item_id):
                             "cover": cover,
                             "genre": genre,
                             "spotify_id": spotify_id,
+                            "duration_ms": duration_ms,
                             "track_url": None,
                             "tempo": tempo,
                         }
@@ -123,6 +125,7 @@ def fetch_tracks(sp, item_type, item_id):
                     )
                     track_num = item["track_number"]
                     spotify_id = item.get("id")
+                    duration_ms = item.get("duration_ms")
                     tempo = None
                     songs_list.append(
                         {
@@ -137,6 +140,7 @@ def fetch_tracks(sp, item_type, item_id):
                             "cover": cover,
                             "genre": genre,
                             "spotify_id": spotify_id,
+                            "duration_ms": duration_ms,
                             "tempo": tempo,
                         }
                     )
@@ -166,6 +170,7 @@ def fetch_tracks(sp, item_type, item_id):
             album_total = album_info.get("total_tracks")
         track_num = items["track_number"]
         spotify_id = items["id"]
+        duration_ms = items.get("duration_ms")
         tempo = None
         if len(items["album"]["images"]) > 0:
             cover = items["album"]["images"][0]["url"]
@@ -185,6 +190,7 @@ def fetch_tracks(sp, item_type, item_id):
                 "genre": genre,
                 "track_url": None,
                 "spotify_id": spotify_id,
+                "duration_ms": duration_ms,
                 "tempo": tempo,
             }
         )

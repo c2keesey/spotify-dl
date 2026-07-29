@@ -174,7 +174,20 @@ def test_progress_names_failed_track():
     assert p["total"] == 3 and p["done"] == 1
     assert p["failed"] == 2                       # 3 total - 1 done
     assert "The Beatles - Yesterday" in p["failed_tracks"]
-    assert "Obscure Artist - B-side" in p["failed_tracks"]
+    assert "Obscure Artist - B-side" in p["unmatched"]
+
+
+def test_progress_names_rejected_source_as_unmatched():
+    p = web.parse_progress(
+        [
+            "Total songs: 1",
+            "No verified source for Player Dave - Watch Your Thoughts "
+            "(rejected), skipping.",
+        ]
+    )
+
+    assert p["failed"] == 1
+    assert p["unmatched"] == ["Player Dave - Watch Your Thoughts"]
 
 
 def test_progress_dedupes_and_counts_unnamed():

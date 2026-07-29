@@ -9,7 +9,8 @@ from pathlib import Path, PurePath
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
-from spotify_dl.constants import VERSION, DEFAULT_SYNC_CONFIG
+from spotify_dl.constants import VERSION, DEFAULT_SYNC_CONFIG, MATCHES_FILENAME
+from spotify_dl.resolver import MatchStore
 from spotify_dl.scaffold import log, setLogLevel, console, get_tokens
 from spotify_dl.spotify import (
     fetch_tracks,
@@ -183,6 +184,27 @@ def spotify_dl():
         action="store_true",
         help="Copy cached songs to playlists without downloading (use with --config)",
     )
+    parser.add_argument(
+        "--audit-matches",
+        action="store_true",
+        help="With --sync, persist match decisions without downloading audio",
+    )
+    match_group = parser.add_mutually_exclusive_group()
+    match_group.add_argument(
+        "--approve-match",
+        nargs=2,
+        metavar=("SPOTIFY_ID", "YOUTUBE_VIDEO_ID"),
+        help="Persist a manual Spotify-to-YouTube source approval",
+    )
+    match_group.add_argument(
+        "--reject-match",
+        metavar="SPOTIFY_ID",
+        help="Persist a manual rejection so the track is never auto-downloaded",
+    )
+    parser.add_argument(
+        "--match-store",
+        help=f"Match decision file (default: OUTPUT/{MATCHES_FILENAME})",
+    )
     args = parser.parse_args()
     num_cores = os.cpu_count()
     args.multi_core = int(args.multi_core)
@@ -207,10 +229,36 @@ def spotify_dl():
         console.print(f"spotify_dl [bold green]v{VERSION}[/bold green]")
         sys.exit(0)
 
+    match_store_path = args.match_store or str(Path(args.output) / MATCHES_FILENAME)
+    if args.approve_match or args.reject_match:
+        store = MatchStore(match_store_path)
+        if args.approve_match:
+            spotify_id, video_id = args.approve_match
+            store.approve(spotify_id, video_id)
+            console.print(
+                f"Approved Spotify track {spotify_id} -> YouTube video {video_id}"
+            )
+        else:
+            store.reject(args.reject_match)
+            console.print(f"Rejected Spotify track {args.reject_match}")
+        if not args.url and not args.sync and not args.repair and not args.audit_matches:
+            return
+
     if args.sync:
         log.info("Starting spotify_dl sync v%s", VERSION)
-        run_sync(args.config, dry_run=args.dry_run, limit=args.limit, limit_playlists=args.limit_playlists, multi_core=args.multi_core)
+        run_sync(
+            args.config,
+            dry_run=args.dry_run,
+            limit=args.limit,
+            limit_playlists=args.limit_playlists,
+            multi_core=args.multi_core,
+            match_store_path=args.match_store,
+            audit_matches=args.audit_matches,
+        )
         sys.exit(0)
+
+    if args.audit_matches:
+        parser.error("--audit-matches requires --sync")
 
     if args.repair:
         log.info("Starting spotify_dl repair v%s", VERSION)
@@ -292,7 +340,7 @@ def spotify_dl():
         url_dict["songs"] = fetch_tracks(sp, item_type, item_id)
         url_data["urls"].append(url_dict.copy())
     if args.dump_json is True:
-        dump_json(url_dict["songs"])
+        dump_json(url_dict["songs"], match_store_path=match_store_path)
     elif args.download is True:
         file_name_f = default_filename
         if args.keep_playlist_order:
@@ -311,6 +359,7 @@ def spotify_dl():
             multi_core=args.multi_core,
             proxy=args.proxy,
             cookies_from_browser=args.cookies_from_browser,
+            match_store_path=match_store_path,
         )
     log.info("Download completed in %.2f seconds.", time.time() - start_time)
 

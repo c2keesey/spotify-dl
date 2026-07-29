@@ -61,6 +61,7 @@ TRACK_DONE_RE = re.compile(
 )
 TRACK_FAIL_RE = re.compile(r"^Failed to download:?\s+(.+?)(?:,\s*(?:make sure|please ensure)\b.*)?$")
 NO_MATCH_RE = re.compile(r"No (?:valid )?search results.*?\bfor (.+?),")
+NO_VERIFIED_RE = re.compile(r"No verified source for (.+?) \([^)]+\), skipping")
 PCT_RE = re.compile(r"\[download\]\s+([\d.]+)% of")
 
 jobs = {}
@@ -165,6 +166,8 @@ def parse_progress(log):
         elif m := TRACK_FAIL_RE.match(line):
             failed_tracks.append(m.group(1).strip())
         elif m := NO_MATCH_RE.search(line):
+            unmatched_tracks.append(m.group(1).strip())
+        elif m := NO_VERIFIED_RE.search(line):
             unmatched_tracks.append(m.group(1).strip())
         elif m := PCT_RE.search(line):
             pct = float(m.group(1))

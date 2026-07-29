@@ -4,6 +4,15 @@ import spotipy
 import base64
 
 
+def without_duration(songs):
+    """Keep legacy metadata assertions while requiring resolver duration input."""
+    assert all("duration_ms" in song for song in songs)
+    return [
+        {key: value for key, value in song.items() if key != "duration_ms"}
+        for song in songs
+    ]
+
+
 def spotify_auth():
     # test client ids, b64 for just to deter.
     client = spotipy.Spotify(
@@ -33,7 +42,7 @@ def test_spotify_playlist_fetch_one():
         "playlist_num": 1,
         "spotify_id": "2GpBrAoCwt48fxjgjlzMd4",
         'tempo': None,
-    } == songs[0]
+    } == without_duration(songs)[0]
 
 
 def test_spotify_playlist_fetch_more():
@@ -114,7 +123,7 @@ def test_spotify_playlist_fetch_more():
             "spotify_id": "2E2znCPaS8anQe21GLxcvJ",
             'tempo': None,
         },
-    ] == songs
+    ] == without_duration(songs)
 
 
 def test_spotify_track_fetch_one():
@@ -135,7 +144,7 @@ def test_spotify_track_fetch_one():
         "playlist_num": 1,
         "spotify_id": "2GpBrAoCwt48fxjgjlzMd4",
         'tempo': None,
-    } == songs[0]
+    } == without_duration(songs)[0]
 
 
 def test_spotify_album_fetch_one():
@@ -156,7 +165,7 @@ def test_spotify_album_fetch_one():
         "playlist_num": 1,
         "spotify_id": "5EoKQDGE2zxrTfRFZF52u5",
         'tempo': None,
-    } == songs[0]
+    } == without_duration(songs)[0]
 
 
 def test_spotify_album_fetch_more():
@@ -389,7 +398,7 @@ def test_spotify_album_fetch_more():
             "spotify_id": "4G4Sf18XkFvNTV5vAxiQyd",
             'tempo': None,
         },
-    ] == songs
+    ] == without_duration(songs)
     assert (len(songs)) == 16
 
 
@@ -413,4 +422,4 @@ def test_spotify_playlist_fetch_local_file():
             "spotify_id": None,
             "tempo": None, 
         }
-    ] == songs
+    ] == without_duration(songs)

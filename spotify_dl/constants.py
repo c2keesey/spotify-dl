@@ -1,7 +1,12 @@
 import os
 from pathlib import Path
 
-__all__ = ["VERSION", "MANIFEST_FILENAME", "DEFAULT_SYNC_CONFIG"]
+__all__ = [
+    "VERSION",
+    "MANIFEST_FILENAME",
+    "MATCHES_FILENAME",
+    "DEFAULT_SYNC_CONFIG",
+]
 
 VERSION = "8.9.0"
 
@@ -12,4 +17,5 @@ else:
 
 DOWNLOAD_LIST = "download_list.log"
 MANIFEST_FILENAME = ".spotify_dl_manifest.json"
+MATCHES_FILENAME = ".spotify_dl_matches.json"
 DEFAULT_SYNC_CONFIG = str(Path.home() / ".spotify_dl_sync.json")

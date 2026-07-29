@@ -10,13 +10,13 @@ import json
 import mutagen
 import csv
 import yt_dlp
-import ytmusicapi
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
 from spotify_dl.scaffold import log
-from spotify_dl.utils import sanitize, get_closest_match
-from spotify_dl.constants import DOWNLOAD_LIST
+from spotify_dl.utils import sanitize
+from spotify_dl.constants import DOWNLOAD_LIST, MATCHES_FILENAME
+from spotify_dl.resolver import MatchStore, TrackResolver, is_approved_decision
 
 
 def convert_webm_to_mp3(webm_path, mp3_path):
@@ -111,43 +111,32 @@ def playlist_num_filename(**kwargs):
     return f"{kwargs['track_num']} - {default_filename(**kwargs)}"
 
 
-def dump_json(songs):
+def dump_json(songs, match_store_path=None):
     """
     Outputs the JSON response of ydl.extract_info to stdout
     :param songs: the songs for which the JSON should be output
     """
-    for song in songs:
-        query = f"{song.get('artist')} - {song.get('name')}".replace(
-            ":", ""
-        ).replace('"', "")
+    store_path = match_store_path or path.join(os.getcwd(), MATCHES_FILENAME)
+    resolver = TrackResolver(MatchStore(store_path))
 
+    for song in songs:
+        decision = resolver.resolve(song)
+        if not is_approved_decision(decision):
+            log.error(
+                "No verified source for %s - %s (%s)",
+                song.get("artist"),
+                song.get("name"),
+                decision["status"],
+            )
+            continue
+        video_id = decision["source"]["video_id"]
         ydl_opts = {"quiet": True}
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
-                ytJson = {}
-                with ytmusicapi.YTMusic() as ym:
-                    # Reduce results to array of titles and video IDs
-                    search_results = ym.search(query, filter="songs")
-                    if len(search_results) == 0:
-                        log.warning("No song results found for %s, retrying.", query)
-                        search_results = ym.search(query, filter="videos")
-                        if len(search_results) == 0:
-                            log.error("No search results found for %s, skipping.", query)
-                            continue
-                    filtered_results = [
-                        (f"{d['artists'][0]['name']} - {d['title']}".replace(":", "").replace('"', ""), d["videoId"])
-                        for d in search_results
-                        if 'artists' in d and len(d['artists']) > 0
-                    ]
-                    if len(filtered_results) == 0:
-                        log.error("No valid search results with artists found for %s, skipping.", query)
-                        continue
-                    result_titles, result_ids = zip(*filtered_results)
-                    # Get ID of closest matching result by finding index in titles list
-                    videoId = result_ids[result_titles.index(get_closest_match(result_titles, query))]
-
-                    ytJson = ydl.extract_info(f"https://music.youtube.com/watch?v={videoId}", False)
+                ytJson = ydl.extract_info(
+                    f"https://music.youtube.com/watch?v={video_id}", False
+                )
                 print(json.dumps([ytJson]))  # insert into array so that the format stays the same
             except Exception as e:  # skipcq: PYL-W0703
                 log.debug(e)
@@ -249,8 +238,10 @@ def set_tags(temp, filename, kwargs):
 
 def find_and_download_songs(kwargs):
     """
-    function handles actual download of the songs
-    the ytmusicapi lib is used to search for songs and get best url via YT Music
+    Download songs from source IDs approved during the resolve phase.
+
+    This function intentionally has no search capability. It can only consume
+    the persisted decision attached to each track.
     :param kwargs: dictionary of key value arguments to be used in download
     """
     sponsorblock_postprocessor = []
@@ -289,6 +280,17 @@ def find_and_download_songs(kwargs):
             file_path = path.join(save_path, file_name)
 
             mp3file_path = f"{file_path}.mp3"
+            decision = kwargs["track_db"][i].get("match_decision")
+            if not is_approved_decision(decision):
+                status = decision.get("status") if decision else "unresolved"
+                log.warning(
+                    "No verified source for %s - %s (%s), skipping.",
+                    artist,
+                    name,
+                    status,
+                )
+                continue
+            video_id = decision["source"]["video_id"]
 
             if save_path not in files:
                 path_files = set()
@@ -307,37 +309,20 @@ def find_and_download_songs(kwargs):
                 continue
 
             # Try to recover from orphan WebM before downloading
-            if not kwargs["skip_mp3"] and recover_orphan_webm(file_path):
+            if (
+                not kwargs["skip_mp3"]
+                and not path.exists(mp3file_path)
+                and recover_orphan_webm(file_path)
+            ):
                 print(f"Recovered {file_name}.mp3 from orphan WebM")
                 set_tags(temp, mp3file_path, kwargs)
                 continue
-
-            with ytmusicapi.YTMusic() as ym:
-                # Reduce search results to array of titles and video IDs
-                search_results = ym.search(query, filter="songs")
-                if len(search_results) == 0:
-                    log.warning("No song results found for %s, retrying.", query)
-                    search_results = ym.search(query, filter="videos")
-                    if len(search_results) == 0:
-                        log.error("No search results found for %s, skipping.", query)
-                        continue
-                filtered_results = [
-                    (f"{d['artists'][0]['name']} - {d['title']}".replace(":", "").replace('"', ""), d["videoId"])
-                    for d in search_results
-                    if 'artists' in d and len(d['artists']) > 0
-                ]
-                if len(filtered_results) == 0:
-                    log.error("No valid search results with artists found for %s, skipping.", query)
-                    continue
-                result_titles, result_ids = zip(*filtered_results)
-                # Get ID of closest matching result by finding index in titles list
-                video_id = result_ids[result_titles.index(get_closest_match(result_titles, query))]
 
             outtmpl = f"{file_path}.%(ext)s"
             ydl_opts = {
                 "proxy": kwargs.get("proxy"),
                 "default_search": "ytsearch",
-                "format": "bestaudio/best",
+                "format": kwargs.get("format_str", "bestaudio/best"),
                 "outtmpl": outtmpl,
                 "postprocessors": sponsorblock_postprocessor.copy(),
                 "noplaylist": True,
@@ -456,8 +441,19 @@ def download_songs(**kwargs):
     Downloads songs from the YouTube URL passed to either current directory or download_directory, as it is passed.  [made small typo change]
     :param kwargs: keyword arguments to be passed on between functions when downloading
     """
+    match_store_path = kwargs.get("match_store_path") or path.join(
+        kwargs["output_dir"], MATCHES_FILENAME
+    )
+    resolver = kwargs.get("resolver") or TrackResolver(MatchStore(match_store_path))
+    decisions = {}
     for url in kwargs["songs"]["urls"]:
         log.debug("Downloading to %s", url["save_path"])
+        for track in url["songs"]:
+            decision = resolver.resolve(track)
+            track["match_decision"] = decision
+            spotify_id = track.get("spotify_id")
+            if spotify_id:
+                decisions[spotify_id] = decision
     # machine-readable marker consumed by the web UI progress parser (web.py)
     print(f"Total songs: {sum(len(url['songs']) for url in kwargs['songs']['urls'])}")
     reference_file = DOWNLOAD_LIST
@@ -473,3 +469,4 @@ def download_songs(**kwargs):
     else:
         find_and_download_songs(kwargs)
     os.remove(reference_file)
+    return decisions

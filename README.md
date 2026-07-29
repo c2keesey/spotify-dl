@@ -62,10 +62,22 @@ The main feature of this fork. Keep local directories in sync with your Spotify 
 
 ### How it works
 
-1. Downloads each song once to a shared cache
-2. Copies songs to individual playlist folders (self-contained, USB-drive ready)
-3. Tracks what's been downloaded to enable incremental syncs
-4. Detects additions and removals from playlists
+1. Resolves each Spotify track to a strict, auditable YouTube Music match
+2. Downloads the exact approved video ID once to a shared cache
+3. Rejects ambiguous title, artist, duration, and version conflicts
+4. Copies verified songs to individual playlist folders
+5. Tracks source provenance and match scores for incremental syncs
+
+Only cache entries whose `match_status` is `verified` or `manual` are safe for
+downstream consumers. Missing, legacy, `ambiguous`, and `rejected` entries must
+be treated as unavailable. The full decision—including Spotify metadata,
+selected YouTube video ID, normalized comparisons, scores, duration delta,
+runner-up margin, resolver version, and timestamp—is stored in
+`.spotify_dl_manifest.json`. Reusable decisions and manual overrides are stored
+in `.spotify_dl_matches.json`.
+
+Audio-content matching is disabled and cannot auto-approve a source. Metadata
+gates are the only automatic approval path.
 
 ### Config file
 
@@ -96,7 +108,29 @@ spotify_dl --sync --config sync_config.json --dry-run
 
 # Limit for testing
 spotify_dl --sync --config sync_config.json --limit-playlists 2 --limit 5
+
+# Audit source matches without downloading or trusting opaque cached audio
+spotify_dl --sync --audit-matches --config sync_config.json
 ```
+
+### Manual match decisions
+
+Use a Spotify track ID and the YouTube video ID (the value after `v=`), then run
+sync again:
+
+```bash
+# Persist an approval
+spotify_dl -o ~/Music/spotify-sync --approve-match SPOTIFY_ID YOUTUBE_VIDEO_ID
+
+# Persist a rejection
+spotify_dl -o ~/Music/spotify-sync --reject-match SPOTIFY_ID
+```
+
+Pass `--match-store PATH` when the decision file is not under `--output`.
+
+`--audit-matches` emits decisions for current playlists and older cache entries
+without downloading. A legacy file remains `stale` and unavailable unless its
+existing manifest provenance already names the same approved YouTube video ID.
 
 ### CLI flags
 
@@ -107,6 +141,10 @@ spotify_dl --sync --config sync_config.json --limit-playlists 2 --limit 5
 | `--dry-run` | Preview changes without downloading |
 | `--limit N` | Max songs per playlist (for testing) |
 | `--limit-playlists N` | Max playlists to process (for testing) |
+| `--audit-matches` | Persist source decisions without downloading |
+| `--approve-match SPOTIFY_ID VIDEO_ID` | Persist a manual approval |
+| `--reject-match SPOTIFY_ID` | Persist a manual rejection |
+| `--match-store PATH` | Override the match decision file |
 
 ## Folder Organization
 
