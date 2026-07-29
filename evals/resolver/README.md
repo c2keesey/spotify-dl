@@ -11,23 +11,32 @@ the `needs_review` cases are deliberately on the fence. Only labels changed to
 
 ## Review
 
-Render the cases with clickable candidates:
+Launch the interactive reviewer:
+
+```bash
+uv run python scripts/review_resolver_eval.py
+```
+
+The selected candidate autoplays as a 20-second excerpt starting 30 seconds
+into the track. Use the arrow keys (or `hjkl`) to move through candidates and
+cases:
+
+- `y` accepts the resolver's result and saves it as gold.
+- `v` marks the checked candidate (or the current candidate) verified.
+- `r` says none of the captured candidates is the right recording.
+- `x` checks multiple acceptable candidates; `a` saves them as ambiguous.
+- `u` defers the case, leaving it in `needs_review`.
+- `Space` stops playback, `Enter` replays, and `q` exits.
+
+Every classification is atomically persisted to `v1.json`. The TUI requires
+either `mpv`, or both `yt-dlp` and `ffplay`; this machine already has the latter
+pair.
+
+The non-interactive score report remains available:
 
 ```bash
 uv run python scripts/run_resolver_eval.py
 ```
-
-For each case, listen to the expected candidate and any close alternatives,
-then edit its `label` in `v1.json`:
-
-- Set `expected_status` to `verified`, `rejected`, or `ambiguous`.
-- Put every acceptable YouTube ID in `expected_video_ids`. Use an empty list
-  for a rejected case.
-- Record the reason or distinguishing detail in `notes`.
-- Set `state` to `gold` only after a human has made the judgment.
-
-Re-run the command to see gold accuracy. Provisional agreement is displayed for
-review but excluded from that metric.
 
 The highest-priority fence cases are:
 

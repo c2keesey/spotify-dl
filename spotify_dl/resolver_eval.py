@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from spotify_dl.resolver import evaluate_candidates
+from spotify_dl.resolver import evaluate_candidates, utc_now
 
 
 SCHEMA_VERSION = 1
@@ -23,6 +25,27 @@ def load_eval_set(
         eval_set = json.load(file)
     validate_eval_set(eval_set, require_candidates=require_candidates)
     return eval_set
+
+
+def save_eval_set(path: str | Path, eval_set: dict[str, Any]) -> None:
+    """Validate and atomically save an evaluation set."""
+    validate_eval_set(eval_set)
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_path = tempfile.mkstemp(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            json.dump(eval_set, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+        os.replace(temporary_path, destination)
+    except Exception:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+        raise
 
 
 def validate_eval_set(
@@ -106,6 +129,62 @@ def validate_eval_set(
             if video_id in seen_video_ids:
                 raise ValueError(f"{location} has duplicate videoId: {video_id}")
             seen_video_ids.add(video_id)
+
+
+def set_gold_label(
+    case: dict[str, Any],
+    expected_status: str,
+    expected_video_ids: list[str],
+    *,
+    provenance: str = "human review via resolver eval TUI",
+    reviewed_at: str | None = None,
+) -> None:
+    """Apply one explicit human classification to an eval case."""
+    if expected_status not in EXPECTED_STATUSES:
+        raise ValueError(f"unknown expected status: {expected_status}")
+
+    candidate_ids = {
+        candidate.get("videoId")
+        for candidate in case.get("candidates", [])
+        if candidate.get("videoId")
+    }
+    unique_video_ids = list(dict.fromkeys(expected_video_ids))
+    missing_ids = set(unique_video_ids) - candidate_ids
+    if missing_ids:
+        raise ValueError(
+            f"expected video IDs are not captured candidates: {sorted(missing_ids)}"
+        )
+    if expected_status == "rejected" and unique_video_ids:
+        raise ValueError("rejected labels cannot have expected video IDs")
+    if expected_status == "verified" and not unique_video_ids:
+        raise ValueError("verified labels require an expected video ID")
+    if expected_status == "ambiguous" and len(unique_video_ids) < 2:
+        raise ValueError("ambiguous labels require at least two expected video IDs")
+
+    case["label"].update(
+        {
+            "state": "gold",
+            "expected_status": expected_status,
+            "expected_video_ids": unique_video_ids,
+            "provenance": provenance,
+            "reviewed_at": reviewed_at or utc_now(),
+        }
+    )
+
+
+def label_for_resolver_result(result: dict[str, Any]) -> tuple[str, list[str]]:
+    """Return the label implied by accepting the resolver's current result."""
+    status = result["actual"]["status"]
+    if status == "rejected":
+        return status, []
+    if status == "verified":
+        return status, [result["actual"]["video_id"]]
+    video_ids = [
+        candidate["source"]["video_id"]
+        for candidate in result["candidates"]
+        if candidate["eligible"]
+    ]
+    return status, video_ids
 
 
 def evaluate_eval_set(eval_set: dict[str, Any]) -> dict[str, Any]:

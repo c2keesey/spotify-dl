@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import json
-import os
-import tempfile
 from pathlib import Path
 from typing import Any
 
 from ytmusicapi import YTMusic
 
 from spotify_dl.resolver import MAX_CANDIDATES, RESOLVER_VERSION, utc_now
-from spotify_dl.resolver_eval import load_eval_set, validate_eval_set
+from spotify_dl.resolver_eval import load_eval_set, save_eval_set, validate_eval_set
 
 
 DEFAULT_PATH = Path("evals/resolver/v1.json")
@@ -84,28 +81,12 @@ def capture(path: Path) -> dict[str, Any]:
     return captured
 
 
-def atomic_write(path: Path, value: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_path = tempfile.mkstemp(
-        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-            json.dump(value, file, ensure_ascii=False, indent=2)
-            file.write("\n")
-        os.replace(temporary_path, path)
-    except Exception:
-        if os.path.exists(temporary_path):
-            os.remove(temporary_path)
-        raise
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("path", nargs="?", type=Path, default=DEFAULT_PATH)
     args = parser.parse_args()
     captured = capture(args.path)
-    atomic_write(args.path, captured)
+    save_eval_set(args.path, captured)
     print(f"Captured {len(captured['cases'])} cases in {args.path}")
 
 
