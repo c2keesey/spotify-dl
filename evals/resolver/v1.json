@@ -1,0 +1,1943 @@
+{
+  "schema_version": 1,
+  "name": "resolver-seed-v1",
+  "description": "Real Spotify metadata with captured YouTube Music search candidates. No label is gold until human-reviewed.",
+  "captured_at": "2026-07-29T04:43:24.499878Z",
+  "resolver_version_at_capture": "1",
+  "cases": [
+    {
+      "case_id": "silence-nvyko",
+      "tags": [
+        "positive",
+        "original-issue"
+      ],
+      "spotify": {
+        "spotify_id": "1KY3su6yQ7pNiCqSGMZOOj",
+        "name": "Silence",
+        "artists": [
+          {
+            "name": "NVYKO"
+          }
+        ],
+        "album": "Secret Songs",
+        "duration_ms": 118505
+      },
+      "label": {
+        "state": "provisional",
+        "expected_status": "verified",
+        "expected_video_ids": [
+          "C1Pkw5oChR0"
+        ],
+        "provenance": "sdl-apv issue expectation plus metadata inspection",
+        "notes": "Clean exact-title, artist, album, and duration match."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "Silence",
+          "album": {
+            "name": "Secret Songs",
+            "id": "MPREb_xamoQrdSL9y"
+          },
+          "videoId": "C1Pkw5oChR0",
+          "duration": "1:59",
+          "duration_seconds": 119,
+          "artists": [
+            {
+              "name": "NVYKO",
+              "id": "UCTn-7nezgUheXJkzy_HsGCw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Silence",
+          "album": {
+            "name": "A Black Mile To The Surface",
+            "id": "MPREb_R6Kv5nr0Yss"
+          },
+          "videoId": "8KfwXac4ftI",
+          "duration": "7:00",
+          "duration_seconds": 420,
+          "artists": [
+            {
+              "name": "Manchester Orchestra",
+              "id": "UC52xilymw0N3P8Q2JWMAEdw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Silent Lucidity (Remastered 2003)",
+          "album": {
+            "name": "Empire (Expanded Edition / Remastered/2003)",
+            "id": "MPREb_luZoQwYLG5X"
+          },
+          "videoId": "3GIv4NCmbvU",
+          "duration": "5:48",
+          "duration_seconds": 348,
+          "artists": [
+            {
+              "name": "Queensrÿche",
+              "id": "UC6ghsPzRFFa6WMxaavyYb6w"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The sound of silence",
+          "album": {
+            "name": "The Best Of Panflute",
+            "id": "MPREb_YzRQGuZHzvu"
+          },
+          "videoId": "zh811vbQmC4",
+          "duration": "4:31",
+          "duration_seconds": 271,
+          "artists": [
+            {
+              "name": "Wuauquikuna",
+              "id": "UCLmwzK5Vvpe5JSa9pu1QLOw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Sound of Silence",
+          "album": {
+            "name": "Immortalized",
+            "id": "MPREb_a1IAUEwStpp"
+          },
+          "videoId": "HtNoRJ0AxdQ",
+          "duration": "4:09",
+          "duration_seconds": 249,
+          "artists": [
+            {
+              "name": "Disturbed",
+              "id": "UCMHHDXMvnMKRzuEKtMe8ZRA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Hours In Silence",
+          "album": {
+            "name": "Her Loss",
+            "id": "MPREb_7hM2FHsf84t"
+          },
+          "videoId": "2fmDzZD-ME4",
+          "duration": "6:40",
+          "duration_seconds": 400,
+          "artists": [
+            {
+              "name": "Drake",
+              "id": "UCU6cE7pdJPc6DU2jSrKEsdQ"
+            },
+            {
+              "name": "21 Savage",
+              "id": "UCoC_a7lWbj2v7rt4ujp4n2A"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Sound of Silence",
+          "album": {
+            "name": "The Sound of Silence",
+            "id": "MPREb_Qmkg3OGUxa6"
+          },
+          "videoId": "P_wadnj-sd4",
+          "duration": "3:33",
+          "duration_seconds": 213,
+          "artists": [
+            {
+              "name": "Pentatonix",
+              "id": "UC9ouIc5bVUPVzZ0X_JETPEA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "silence me",
+          "album": {
+            "name": "you > them",
+            "id": "MPREb_WtU2RO1imei"
+          },
+          "videoId": "wY5VMTTBGbA",
+          "duration": "1:49",
+          "duration_seconds": 109,
+          "artists": [
+            {
+              "name": "NOIZZ.",
+              "id": "UC7IMhfztyKY6ari22YVPRFw"
+            },
+            {
+              "name": "Lil Jaywalk",
+              "id": "UCibQyX_YSaKjNLSuyqbaZ8Q"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Silent Morning",
+          "album": {
+            "name": "Noel",
+            "id": "MPREb_YjtqgN619BJ"
+          },
+          "videoId": "1rZnVhHY1iY",
+          "duration": "4:25",
+          "duration_seconds": 265,
+          "artists": [
+            {
+              "name": "Noel",
+              "id": "UC2TMPA-sL4OpGTWnaWuZsvg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Sound of Silence",
+          "album": {
+            "name": "The Sound of Silence",
+            "id": "MPREb_zQSnzN53GXe"
+          },
+          "videoId": "b0P51LK0FB0",
+          "duration": "4:20",
+          "duration_seconds": 260,
+          "artists": [
+            {
+              "name": "Todd Hoffman",
+              "id": "UCMC4kb7lyHlT_ddOFm4vlyQ"
+            }
+          ]
+        }
+      ],
+      "query": "NVYKO - Silence",
+      "search_filter": "songs"
+    },
+    {
+      "case_id": "mutate-player-dave",
+      "tags": [
+        "positive",
+        "original-issue"
+      ],
+      "spotify": {
+        "spotify_id": "6HBzgLpCTBc8pS5HuoBeB0",
+        "name": "Mutate",
+        "artists": [
+          {
+            "name": "Player Dave"
+          }
+        ],
+        "album": "Where the Wind Blew Me",
+        "duration_ms": 106949
+      },
+      "label": {
+        "state": "provisional",
+        "expected_status": "verified",
+        "expected_video_ids": [
+          "elzQaioVEkY"
+        ],
+        "provenance": "sdl-apv issue expectation plus metadata inspection",
+        "notes": "Clean exact-title, artist, album, and duration match."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "Mutate",
+          "album": {
+            "name": "Where the Wind Blew Me",
+            "id": "MPREb_xYYFd0hln96"
+          },
+          "videoId": "elzQaioVEkY",
+          "duration": "1:47",
+          "duration_seconds": 107,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lightshine (Player Dave Remix)",
+          "album": {
+            "name": "Lightshine (Player Dave Remix)",
+            "id": "MPREb_RWD9xgWcogv"
+          },
+          "videoId": "fFapCsYjPmM",
+          "duration": "3:36",
+          "duration_seconds": 216,
+          "artists": [
+            {
+              "name": "Boreta",
+              "id": "UClVUjjlsnso1saZdevVX4FQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Microjoy",
+          "album": {
+            "name": "Microjoy",
+            "id": "MPREb_qn8r8hsorTY"
+          },
+          "videoId": "n3V_zKsZjjk",
+          "duration": "3:18",
+          "duration_seconds": 198,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCMnwnVDn5v0XxBV5QliMixg"
+            },
+            {
+              "name": "Canary Yellow",
+              "id": "UCUX6N9jG5ZjmYer4H59KSsg"
+            },
+            {
+              "name": "Allegra Miles",
+              "id": "UCekCZU3ibJaDqSXEYEiVkog"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Boundless Perception",
+          "album": {
+            "name": "Where the Wind Blew Me",
+            "id": "MPREb_xYYFd0hln96"
+          },
+          "videoId": "UkM66ATRZFw",
+          "duration": "4:08",
+          "duration_seconds": 248,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            },
+            {
+              "name": "FLY",
+              "id": "UCBMOXYGYLERGaKKf9CAwweA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Fracture",
+          "album": {
+            "name": "Where the Wind Blew Me",
+            "id": "MPREb_xYYFd0hln96"
+          },
+          "videoId": "8CyaSa-ahWw",
+          "duration": "3:43",
+          "duration_seconds": 223,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            },
+            {
+              "name": "sumthin sumthin",
+              "id": "UCnQtaf9XcRf6qwMeKMnITOA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Handful (feat. Snowy)",
+          "album": {
+            "name": "Handful",
+            "id": "MPREb_ivERjgu8NrD"
+          },
+          "videoId": "zZJQKPR2LDU",
+          "duration": "2:52",
+          "duration_seconds": 172,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            },
+            {
+              "name": "snuffy",
+              "id": "UCKJzvQEvoNnRut9YTBufVMg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Confetti",
+          "album": {
+            "name": "and then i started floating",
+            "id": "MPREb_Ffn7SvoWB2V"
+          },
+          "videoId": "vvU8S6qrE5w",
+          "duration": "3:52",
+          "duration_seconds": 232,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Mutate",
+          "album": {
+            "name": "Mutate",
+            "id": "MPREb_qeSIqjEDUBb"
+          },
+          "videoId": "cwIkpEK99ok",
+          "duration": "8:40",
+          "duration_seconds": 520,
+          "artists": [
+            {
+              "name": "Duval Timothy",
+              "id": "UCcH0-q5L7pj4MhfD75CpgrA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "goin under",
+          "album": {
+            "name": "goin under",
+            "id": "MPREb_U6omfjQluWA"
+          },
+          "videoId": "6Eg_BXbfxQQ",
+          "duration": "3:48",
+          "duration_seconds": 228,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Come Home (feat. Ilykimchi)",
+          "album": {
+            "name": "Come Home",
+            "id": "MPREb_N7n8MXMQJEU"
+          },
+          "videoId": "4CNR-n0vMK8",
+          "duration": "3:59",
+          "duration_seconds": 239,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            },
+            {
+              "name": "Niles",
+              "id": "UCS9oKmvcTLJtg5kwHju2M1A"
+            },
+            {
+              "name": "TyFontaine",
+              "id": "UCa-3wA-mVWB4aiKhae8PPsg"
+            }
+          ]
+        }
+      ],
+      "query": "Player Dave - Mutate",
+      "search_filter": "songs"
+    },
+    {
+      "case_id": "watch-your-thoughts-player-dave",
+      "tags": [
+        "negative",
+        "search-miss",
+        "original-issue"
+      ],
+      "spotify": {
+        "spotify_id": "3LYIKNq2TwXoneLK4rtnQZ",
+        "name": "Watch Your Thoughts",
+        "artists": [
+          {
+            "name": "Player Dave"
+          }
+        ],
+        "album": "Where the Wind Blew Me",
+        "duration_ms": 129677
+      },
+      "label": {
+        "state": "provisional",
+        "expected_status": "rejected",
+        "expected_video_ids": [],
+        "provenance": "sdl-apv issue expectation plus metadata inspection",
+        "notes": "The correct track is absent from the captured top ten; nearby Player Dave results must not be accepted."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "Boundless Perception",
+          "album": {
+            "name": "Where the Wind Blew Me",
+            "id": "MPREb_xYYFd0hln96"
+          },
+          "videoId": "UkM66ATRZFw",
+          "duration": "4:08",
+          "duration_seconds": 248,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            },
+            {
+              "name": "FLY",
+              "id": "UCBMOXYGYLERGaKKf9CAwweA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "(Who?) Keeps Changing Your Mind? (12'' Club Mix) (feat. Chocolate Puma)",
+          "album": {
+            "name": "(Who?) Keeps Changing Your Mind",
+            "id": "MPREb_ABmXpMRARho"
+          },
+          "videoId": "zQhZptWqJ8A",
+          "duration": "6:40",
+          "duration_seconds": 400,
+          "artists": [
+            {
+              "name": "South Street Player",
+              "id": "UCka9BnWNn_mOWK1dH0XbkHQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "(Who?) Keeps Changing Your Mind? (Daniel Bovie & Roy Rox Remix)",
+          "album": {
+            "name": "(Who?) Keeps Changing Your Mind (2010 Mixes)",
+            "id": "MPREb_S8rP8TmZcxQ"
+          },
+          "videoId": "m-G4o2AOly0",
+          "duration": "8:08",
+          "duration_seconds": 488,
+          "artists": [
+            {
+              "name": "South Street Player",
+              "id": "UCka9BnWNn_mOWK1dH0XbkHQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Gili Thoughts",
+          "album": {
+            "name": "Where the Wind Blew Me",
+            "id": "MPREb_xYYFd0hln96"
+          },
+          "videoId": "jI6UYGb-02s",
+          "duration": "2:44",
+          "duration_seconds": 164,
+          "artists": [
+            {
+              "name": "Player Dave & BRAKEBILL",
+              "id": null
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "what we dream of",
+          "album": {
+            "name": "Dream Disc",
+            "id": "MPREb_ntwPQ625UGN"
+          },
+          "videoId": "zJYvXz5j0hM",
+          "duration": "4:56",
+          "duration_seconds": 296,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCMnwnVDn5v0XxBV5QliMixg"
+            },
+            {
+              "name": "JOIA",
+              "id": "UCu9DmebHiMxekhqBJYIXuQw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Raindance",
+          "album": {
+            "name": "The Boy Who Played the Harp",
+            "id": "MPREb_HY0tY44STvm"
+          },
+          "videoId": "1qmrq6I_jHI",
+          "duration": "3:40",
+          "duration_seconds": 220,
+          "artists": [
+            {
+              "name": "Dave",
+              "id": "UCu8B46V0mU2Wqii6qUatrvw"
+            },
+            {
+              "name": "Tems",
+              "id": "UCXg6YtKpgC59gRKUfxQw8Fw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Change Your Mind",
+          "album": {
+            "name": "Take Over EP",
+            "id": "MPREb_PJZpQUTwzB4"
+          },
+          "videoId": "2Z4asgWShhc",
+          "duration": "4:12",
+          "duration_seconds": 252,
+          "artists": [
+            {
+              "name": "Georgie Riot & OHKAY",
+              "id": null
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "What's On My Mind, Pt. 2",
+          "album": {
+            "name": "F.B.I.",
+            "id": "MPREb_4TfGGsqDdVt"
+          },
+          "videoId": "s6wIECfSivQ",
+          "duration": "4:17",
+          "duration_seconds": 257,
+          "artists": [
+            {
+              "name": "The Dayton Family",
+              "id": "UCoqmuwaIyCx5E3IeMEfdaHA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Leadership",
+          "album": {
+            "name": "Where the Wind Blew Me",
+            "id": "MPREb_xYYFd0hln96"
+          },
+          "videoId": "TRc2YIBEh8E",
+          "duration": "3:01",
+          "duration_seconds": 181,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "No One Can See",
+          "album": {
+            "name": "No One Can See",
+            "id": "MPREb_xvNNzFDkCv7"
+          },
+          "videoId": "40j8d1-Kq58",
+          "duration": "4:35",
+          "duration_seconds": 275,
+          "artists": [
+            {
+              "name": "Player Dave",
+              "id": "UCNuRsqxLMSVSNXdVvsBG28A"
+            },
+            {
+              "name": "Next To Blue",
+              "id": "UCwoyA2RB3WGN3fETtjy7vog"
+            }
+          ]
+        }
+      ],
+      "query": "Player Dave - Watch Your Thoughts",
+      "search_filter": "songs"
+    },
+    {
+      "case_id": "wanderer-dirtwire",
+      "tags": [
+        "negative",
+        "search-miss",
+        "original-issue"
+      ],
+      "spotify": {
+        "spotify_id": "2stPZw2N9cCKe3ZS0uhx0s",
+        "name": "Wanderer",
+        "artists": [
+          {
+            "name": "Dirtwire"
+          }
+        ],
+        "album": "Where the Wind Blew Me",
+        "duration_ms": 224858
+      },
+      "label": {
+        "state": "provisional",
+        "expected_status": "rejected",
+        "expected_video_ids": [],
+        "provenance": "sdl-apv issue expectation plus metadata inspection",
+        "notes": "The correct track is absent from the captured top ten; a different Dirtwire track ranks first."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "Stranger",
+          "album": {
+            "name": "Blaze",
+            "id": "MPREb_mOxhGgIF8Tz"
+          },
+          "videoId": "cMBrGQXLs0I",
+          "duration": "3:06",
+          "duration_seconds": 186,
+          "artists": [
+            {
+              "name": "Dirtwire",
+              "id": "UCrYE6Stal3Z3rl2N79D6ECg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Deeper Well",
+          "album": {
+            "name": "Deeper Well",
+            "id": "MPREb_4cmQbKtHDUI"
+          },
+          "videoId": "L62fNivd_1A",
+          "duration": "4:45",
+          "duration_seconds": 285,
+          "artists": [
+            {
+              "name": "Dirtwire",
+              "id": "UCrYE6Stal3Z3rl2N79D6ECg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Wanderer (feat. Tyler Shelton & Traitors)",
+          "album": {
+            "name": "White Noise",
+            "id": "MPREb_qwaTbCcY9PT"
+          },
+          "videoId": "27LPnNg65LI",
+          "duration": "3:34",
+          "duration_seconds": 214,
+          "artists": [
+            {
+              "name": "Beyond Deviation",
+              "id": "UC6DBqLOpYsCat0NKWy_U_gQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Steppegrass",
+          "album": {
+            "name": "Road Goes All Night",
+            "id": "MPREb_vKpQzLCH61m"
+          },
+          "videoId": "OjKu0eM1eX8",
+          "duration": "5:52",
+          "duration_seconds": 352,
+          "artists": [
+            {
+              "name": "Dirtwire",
+              "id": "UCrYE6Stal3Z3rl2N79D6ECg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Wanderer (feat. Tyler Shelton & Traitors)",
+          "album": {
+            "name": "White Noise",
+            "id": "MPREb_3YDsaFzdVMA"
+          },
+          "videoId": "2nHF1MeWvnM",
+          "duration": "3:29",
+          "duration_seconds": 209,
+          "artists": [
+            {
+              "name": "Beyond Deviation",
+              "id": "UC6DBqLOpYsCat0NKWy_U_gQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Wanderer (feat. Tyler Shelton & Traitors)",
+          "album": {
+            "name": "White Noise",
+            "id": "MPREb_SVV54DlOp9x"
+          },
+          "videoId": "q4NEdXJ8nH0",
+          "duration": "3:29",
+          "duration_seconds": 209,
+          "artists": [
+            {
+              "name": "Beyond Deviation",
+              "id": "UC6DBqLOpYsCat0NKWy_U_gQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Wanderer",
+          "album": {
+            "name": "The Wanderer",
+            "id": "MPREb_P67i17ZDhpx"
+          },
+          "videoId": "kOWGRq_nwc0",
+          "duration": "2:10",
+          "duration_seconds": 130,
+          "artists": [
+            {
+              "name": "Bernth",
+              "id": "UCVuVtHy1F1VuAzLFyqlCdvQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Asterion",
+          "album": {
+            "name": "Embers",
+            "id": "MPREb_9AcgWEU7Cc9"
+          },
+          "videoId": "qKf01QNKgtM",
+          "duration": "4:11",
+          "duration_seconds": 251,
+          "artists": [
+            {
+              "name": "Dirtwire",
+              "id": "UCrYE6Stal3Z3rl2N79D6ECg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Rusted Railway",
+          "album": {
+            "name": "DIRTWIRE",
+            "id": "MPREb_Nb9Di5SLfWx"
+          },
+          "videoId": "ATfTkZE96Mo",
+          "duration": "4:33",
+          "duration_seconds": 273,
+          "artists": [
+            {
+              "name": "Dirtwire",
+              "id": "UCrYE6Stal3Z3rl2N79D6ECg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Russadir",
+          "album": {
+            "name": "Showdown",
+            "id": "MPREb_UjVmct1jY9O"
+          },
+          "videoId": "7ic0Qx9MbcM",
+          "duration": "3:59",
+          "duration_seconds": 239,
+          "artists": [
+            {
+              "name": "Dirtwire",
+              "id": "UCrYE6Stal3Z3rl2N79D6ECg"
+            }
+          ]
+        }
+      ],
+      "query": "Dirtwire - Wanderer",
+      "search_filter": "songs"
+    },
+    {
+      "case_id": "dont-wanna-be-here-combined-artist",
+      "tags": [
+        "positive",
+        "fence",
+        "multi-artist",
+        "known-false-negative"
+      ],
+      "spotify": {
+        "spotify_id": "6VFP5cMlQtKGoLKORMdrxc",
+        "name": "I Don't Wanna Be Here",
+        "artists": [
+          {
+            "name": "Rome in Silver"
+          },
+          {
+            "name": "Lhasa Petik"
+          }
+        ],
+        "album": "ᖭ༏ᖫ",
+        "duration_ms": 176419
+      },
+      "label": {
+        "state": "needs_review",
+        "expected_status": "verified",
+        "expected_video_ids": [
+          "22VEn4ni3jQ"
+        ],
+        "provenance": "candidate metadata inspection; requires human playback review",
+        "notes": "Likely false negative: YouTube combines both artists into one string, so the current primary-artist gate fails."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "I Don't Wanna Be Here",
+          "album": {
+            "name": "ᖭ༏ᖫ",
+            "id": "MPREb_uRvdW1FY9EF"
+          },
+          "videoId": "22VEn4ni3jQ",
+          "duration": "2:57",
+          "duration_seconds": 177,
+          "artists": [
+            {
+              "name": "Rome in Silver & Lhasa Petik",
+              "id": null
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Never Be the One",
+          "album": {
+            "name": "Makeshift Moon",
+            "id": "MPREb_kaCWonvDhUg"
+          },
+          "videoId": "pB1_WszeVYE",
+          "duration": "3:58",
+          "duration_seconds": 238,
+          "artists": [
+            {
+              "name": "Rome in Silver & Lhasa Petik",
+              "id": null
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Apollo's Lantern",
+          "album": {
+            "name": "ᖭ༏ᖫ",
+            "id": "MPREb_uRvdW1FY9EF"
+          },
+          "videoId": "W6OiQxuPj-k",
+          "duration": "2:43",
+          "duration_seconds": 163,
+          "artists": [
+            {
+              "name": "Rome in Silver",
+              "id": "UCh-7MOawHwqsL47PbLmSdng"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Cicero",
+          "album": {
+            "name": "ᖭ༏ᖫ",
+            "id": "MPREb_uRvdW1FY9EF"
+          },
+          "videoId": "OwccvGU0iUc",
+          "duration": "5:42",
+          "duration_seconds": 342,
+          "artists": [
+            {
+              "name": "Rome in Silver",
+              "id": "UCh-7MOawHwqsL47PbLmSdng"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Waiting...",
+          "album": {
+            "name": "Waiting...",
+            "id": "MPREb_RgHJrJ1d809"
+          },
+          "videoId": "CsHoK6i_sCU",
+          "duration": "3:42",
+          "duration_seconds": 222,
+          "artists": [
+            {
+              "name": "Rome in Silver",
+              "id": "UCh-7MOawHwqsL47PbLmSdng"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Touch",
+          "album": {
+            "name": "ᖭ༏ᖫ",
+            "id": "MPREb_uRvdW1FY9EF"
+          },
+          "videoId": "9bcwez1v-xM",
+          "duration": "3:05",
+          "duration_seconds": 185,
+          "artists": [
+            {
+              "name": "Rome in Silver",
+              "id": "UCh-7MOawHwqsL47PbLmSdng"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Too Much",
+          "album": {
+            "name": "Too Much",
+            "id": "MPREb_jGeDEQkLqEj"
+          },
+          "videoId": "B72BTpxYd74",
+          "duration": "4:12",
+          "duration_seconds": 252,
+          "artists": [
+            {
+              "name": "Rome in Silver",
+              "id": "UCh-7MOawHwqsL47PbLmSdng"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "THE SPIRITUAL EMPIRE ROME WASN'T BUILT IN A DAY (TSERWBIAD) [FULL ALBUM] [FLAC]",
+          "album": {
+            "name": "THE SPIRITUAL EMPIRE ROME WASN'T BUILT IN A DAY TSERWBIAD (FULL ALBUM)",
+            "id": "MPREb_27Gdsg4Cz36"
+          },
+          "videoId": "Wlpts1E4q6o",
+          "duration": "43:58",
+          "duration_seconds": 2638,
+          "artists": [
+            {
+              "name": "Christopher Liam Rose",
+              "id": "UCpkpxbSiv3Q9cJu17Qzbgrg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lies (feat. yasaquarius)",
+          "album": {
+            "name": "Forever Flame",
+            "id": "MPREb_AfcnZcGAH5U"
+          },
+          "videoId": "VnViMEU6vJk",
+          "duration": "3:42",
+          "duration_seconds": 222,
+          "artists": [
+            {
+              "name": "Rome in Silver",
+              "id": "UCh-7MOawHwqsL47PbLmSdng"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "E.T. (feat. Kanye West)",
+          "album": {
+            "name": "Teenage Dream: The Complete Confection",
+            "id": "MPREb_BgZVjuj71Sa"
+          },
+          "videoId": "7XI4B2ckhog",
+          "duration": "3:50",
+          "duration_seconds": 230,
+          "artists": [
+            {
+              "name": "Katy Perry",
+              "id": "UC_7s69e1mDS3lgcTMJEPjCg"
+            }
+          ]
+        }
+      ],
+      "query": "Rome in Silver, Lhasa Petik - I Don't Wanna Be Here",
+      "search_filter": "songs"
+    },
+    {
+      "case_id": "lovin-feeling-duplicate-sources",
+      "tags": [
+        "ambiguous",
+        "fence",
+        "multi-artist",
+        "duplicate-source"
+      ],
+      "spotify": {
+        "spotify_id": "5pxtj7cCnv2hZe6mbS2MBx",
+        "name": "Lovin' Feeling",
+        "artists": [
+          {
+            "name": "French 79"
+          },
+          {
+            "name": "Kid Francescoli"
+          }
+        ],
+        "album": "Olympic",
+        "duration_ms": 204933
+      },
+      "label": {
+        "state": "needs_review",
+        "expected_status": "verified",
+        "expected_video_ids": [
+          "WCfanCc1dzw",
+          "MdjXljT13Bc"
+        ],
+        "provenance": "candidate metadata inspection; requires human playback review",
+        "notes": "Two candidates have identical metadata and scores. Confirm whether both uploads are acceptable or ambiguity is the safer result."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "Lovin' Feeling",
+          "album": {
+            "name": "Lovin' Feeling",
+            "id": "MPREb_NjhD0fFy1AD"
+          },
+          "videoId": "WCfanCc1dzw",
+          "duration": "3:25",
+          "duration_seconds": 205,
+          "artists": [
+            {
+              "name": "French 79",
+              "id": "UC2IsGMjDoczl1h-EQZToIZg"
+            },
+            {
+              "name": "Kid Francescoli",
+              "id": "UCLKAOo5vEjT2d1GNsMjhlfw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lovin' Feeling",
+          "album": {
+            "name": "Olympic",
+            "id": "MPREb_PY8Iri9AoVf"
+          },
+          "videoId": "MdjXljT13Bc",
+          "duration": "3:25",
+          "duration_seconds": 205,
+          "artists": [
+            {
+              "name": "French 79",
+              "id": "UC2IsGMjDoczl1h-EQZToIZg"
+            },
+            {
+              "name": "Kid Francescoli",
+              "id": "UCLKAOo5vEjT2d1GNsMjhlfw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lovin' Feeling (Bolivard Remix)",
+          "album": {
+            "name": "Lovin' Feeling",
+            "id": "MPREb_nDfZuEcBbev"
+          },
+          "videoId": "FJ3f_ihel10",
+          "duration": "3:35",
+          "duration_seconds": 215,
+          "artists": [
+            {
+              "name": "French 79 - Topic",
+              "id": "UC2IsGMjDoczl1h-EQZToIZg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lovin' Feeling (DOPAMOON remix)",
+          "album": {
+            "name": "Lovin' Feeling",
+            "id": "MPREb_nDfZuEcBbev"
+          },
+          "videoId": "BazwOxUUH5E",
+          "duration": "3:15",
+          "duration_seconds": 195,
+          "artists": [
+            {
+              "name": "Kid Francescoli",
+              "id": "UCLKAOo5vEjT2d1GNsMjhlfw"
+            },
+            {
+              "name": "French 79",
+              "id": "UC2IsGMjDoczl1h-EQZToIZg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lovin' Feeling (Les Gordon Remix)",
+          "album": {
+            "name": "Lovin' Feeling (Les Gordon Remix)",
+            "id": "MPREb_7Ce8k8kO3TJ"
+          },
+          "videoId": "aQINk0w0BJQ",
+          "duration": "3:45",
+          "duration_seconds": 225,
+          "artists": [
+            {
+              "name": "French 79 - Topic",
+              "id": "UC2IsGMjDoczl1h-EQZToIZg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Diamond Veins (Kid Francescoli Remix)",
+          "album": {
+            "name": "Diamond Veins (Remixes)",
+            "id": "MPREb_sXXgvaJvzrj"
+          },
+          "videoId": "MyWXr1RbUe8",
+          "duration": "4:00",
+          "duration_seconds": 240,
+          "artists": [
+            {
+              "name": "Sarah Rebecca - Topic",
+              "id": "UCYRyO48lvS--5Hh5izRg6KA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lovin' Feeling",
+          "album": {
+            "name": "Lovin' Feeling",
+            "id": "MPREb_nDfZuEcBbev"
+          },
+          "videoId": "ULgCpcO1OrY",
+          "duration": "3:50",
+          "duration_seconds": 230,
+          "artists": [
+            {
+              "name": "Dim Sum - Topic",
+              "id": "UCq3YMZCBqww88eU7z4IVX3Q"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lovin' Feeling (Straybird Remix)",
+          "album": {
+            "name": "Lovin' Feeling",
+            "id": "MPREb_nDfZuEcBbev"
+          },
+          "videoId": "KfpSKl8UBkE",
+          "duration": "4:53",
+          "duration_seconds": 293,
+          "artists": [
+            {
+              "name": "StrayBird - Topic",
+              "id": "UCuz-Ijuky7tJjDAidXs1F9w"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Diamond Veins",
+          "album": {
+            "name": "Olympic",
+            "id": "MPREb_PY8Iri9AoVf"
+          },
+          "videoId": "sNaQBEcUqsI",
+          "duration": "4:01",
+          "duration_seconds": 241,
+          "artists": [
+            {
+              "name": "French 79 & Sarah Rebecca",
+              "id": null
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Lovin' Feeling (Zerolex Remix)",
+          "album": {
+            "name": "Lovin' Feeling",
+            "id": "MPREb_nDfZuEcBbev"
+          },
+          "videoId": "dclfs5tn0xY",
+          "duration": "3:44",
+          "duration_seconds": 224,
+          "artists": [
+            {
+              "name": "Zerolex - Topic",
+              "id": "UCGg8Aj7XBl2tTulRzUb1vBQ"
+            }
+          ]
+        }
+      ],
+      "query": "French 79, Kid Francescoli - Lovin' Feeling",
+      "search_filter": "songs"
+    },
+    {
+      "case_id": "nasi-goreng-combined-artist",
+      "tags": [
+        "positive",
+        "fence",
+        "multi-artist",
+        "known-false-negative"
+      ],
+      "spotify": {
+        "spotify_id": "2C4suk34FYDiC0T7SwMLtX",
+        "name": "Nasi Goreng",
+        "artists": [
+          {
+            "name": "Player Dave"
+          },
+          {
+            "name": "Brakebill"
+          }
+        ],
+        "album": "Where the Wind Blew Me",
+        "duration_ms": 153983
+      },
+      "label": {
+        "state": "needs_review",
+        "expected_status": "verified",
+        "expected_video_ids": [
+          "NYioN1vkzzE"
+        ],
+        "provenance": "candidate metadata inspection; requires human playback review",
+        "notes": "Likely false negative: YouTube combines both artists into one string, so the current primary-artist gate fails."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "Nasi Goreng",
+          "album": {
+            "name": "Where the Wind Blew Me",
+            "id": "MPREb_xYYFd0hln96"
+          },
+          "videoId": "NYioN1vkzzE",
+          "duration": "2:34",
+          "duration_seconds": 154,
+          "artists": [
+            {
+              "name": "Player Dave & BRAKEBILL",
+              "id": null
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Karma Chameleon (Remastered 2002)",
+          "album": {
+            "name": "Colour By Numbers (Remastered / Expanded Edition)",
+            "id": "MPREb_3yvfKLrNTKx"
+          },
+          "videoId": "S8Cv5XbG428",
+          "duration": "4:13",
+          "duration_seconds": 253,
+          "artists": [
+            {
+              "name": "Culture Club",
+              "id": "UChva71IdUXvTn8uHGtJkB_w"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Keep Your Hands to Yourself",
+          "album": {
+            "name": "Georgia Satellites",
+            "id": "MPREb_iqbzeTAAg17"
+          },
+          "videoId": "cPtw_Cd3zTk",
+          "duration": "3:25",
+          "duration_seconds": 205,
+          "artists": [
+            {
+              "name": "Georgia Satellites",
+              "id": "UCFtQ_ao2P8LoMcvJLX2qf3Q"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Koi Jaye To Le Aaye",
+          "album": {
+            "name": "Ghatak (Original Motion Picture Soundtrack)",
+            "id": "MPREb_AX7UDpDuFRS"
+          },
+          "videoId": "nbp7OwK-6lU",
+          "duration": "6:45",
+          "duration_seconds": 405,
+          "artists": [
+            {
+              "name": "Alka Yagnik",
+              "id": "UCptBkLZ6XRxoyn8SkUMc_Iw"
+            },
+            {
+              "name": "Shankar Mahadevan",
+              "id": "UCX4g5pMVYlYN9K6D8n6HmGg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Gori Nache Re Nagori Nache",
+          "album": {
+            "name": "Gori Nache Re Nagori Nache",
+            "id": "MPREb_KoJDuV2doVr"
+          },
+          "videoId": "-V7gigIpmKc",
+          "duration": "6:24",
+          "duration_seconds": 384,
+          "artists": [
+            {
+              "name": "Yash Rathor",
+              "id": "UCZgw4GtN3ZAu6hlb9SiWxaA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Never Gonna Give You Up",
+          "album": {
+            "name": "Whenever You Need Somebody",
+            "id": "MPREb_dcYZhAh5urI"
+          },
+          "videoId": "lYBUbBu4W08",
+          "duration": "3:34",
+          "duration_seconds": 214,
+          "artists": [
+            {
+              "name": "Rick Astley",
+              "id": "UCwZEU0wAwIyZb4x5G_KJp2w"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Meet In the Middle",
+          "album": {
+            "name": "Diamond Rio",
+            "id": "MPREb_1woXPNZzJoC"
+          },
+          "videoId": "IK9rNIJYaY0",
+          "duration": "3:19",
+          "duration_seconds": 199,
+          "artists": [
+            {
+              "name": "Diamond Rio",
+              "id": "UClQRuEZmquUufZwMKN7OExA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Thriller",
+          "album": {
+            "name": "Thriller",
+            "id": "MPREb_dqWTncCjkSp"
+          },
+          "videoId": "Z85lxckrtzg",
+          "duration": "5:58",
+          "duration_seconds": 358,
+          "artists": [
+            {
+              "name": "Michael Jackson",
+              "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Ocean Drive",
+          "album": {
+            "name": "Blasé Boys Club (Pt. 1)",
+            "id": "MPREb_OA3zubxgX3W"
+          },
+          "videoId": "dmaE78oaVLg",
+          "duration": "3:27",
+          "duration_seconds": 207,
+          "artists": [
+            {
+              "name": "Duke Dumont - Topic",
+              "id": "UCmOc5q8hTHMhurRJE5wDb0Q"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Brown Munde",
+          "album": {
+            "name": "Brown Munde",
+            "id": "MPREb_vNfgqf65n6k"
+          },
+          "videoId": "FM2ykrYbzqg",
+          "duration": "4:15",
+          "duration_seconds": 255,
+          "artists": [
+            {
+              "name": "AP Dhillon",
+              "id": "UCQmNiXx378nooDuZPA2fTAg"
+            },
+            {
+              "name": "Gurinder Gill",
+              "id": "UCJVJFU9cGdj8GCQiP00uPkA"
+            },
+            {
+              "name": "Shinda Kahlon",
+              "id": "UCTOmbdtVviWlIk24ef_F9kQ"
+            }
+          ]
+        }
+      ],
+      "query": "Player Dave, Brakebill - Nasi Goreng",
+      "search_filter": "songs"
+    },
+    {
+      "case_id": "the-chase-edit",
+      "tags": [
+        "positive",
+        "version-match",
+        "edit"
+      ],
+      "spotify": {
+        "spotify_id": "1vQ4ip1vF9VKRiBQjZ79n9",
+        "name": "The Chase (Edit)",
+        "artists": [
+          {
+            "name": "Emmit Fenn"
+          }
+        ],
+        "album": "The Chase (Edit)",
+        "duration_ms": 170721
+      },
+      "label": {
+        "state": "provisional",
+        "expected_status": "verified",
+        "expected_video_ids": [
+          "gyrvxcJWUFw"
+        ],
+        "provenance": "candidate metadata inspection",
+        "notes": "The edit should match the edit while remix candidates fail the version gate."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "The Chase (Edit)",
+          "album": {
+            "name": "The Chase (Edit)",
+            "id": "MPREb_gYvveOk2CRx"
+          },
+          "videoId": "gyrvxcJWUFw",
+          "duration": "2:51",
+          "duration_seconds": 171,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Chase (Øneheart Remix)",
+          "album": {
+            "name": "The Chase (Øneheart Remix)",
+            "id": "MPREb_0MNjYHEBA73"
+          },
+          "videoId": "y4pr8YkGCg0",
+          "duration": "2:14",
+          "duration_seconds": 134,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Chase (Rebūke Remix)",
+          "album": {
+            "name": "The Chase (Rebūke Remix)",
+            "id": "MPREb_JyXAu10HF3W"
+          },
+          "videoId": "WPgoIEEQqIk",
+          "duration": "3:09",
+          "duration_seconds": 189,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            },
+            {
+              "name": "Rebūke",
+              "id": "UCJUDpYbfyrTU2cUM2gieizg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Chase (Christian Löffler Remix)",
+          "album": {
+            "name": "The Chase (Remixes)",
+            "id": "MPREb_H1Pu7j4RupU"
+          },
+          "videoId": "_SYuPHwDshk",
+          "duration": "3:45",
+          "duration_seconds": 225,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            },
+            {
+              "name": "Christian Löffler",
+              "id": "UCB9fKgDkX_mOleBtdKXXQ_w"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Chase (Øneheart Remix Slowed + Reverb)",
+          "album": {
+            "name": "The Chase (Øneheart Remix)",
+            "id": "MPREb_0MNjYHEBA73"
+          },
+          "videoId": "QrgTp0bXCo0",
+          "duration": "2:35",
+          "duration_seconds": 155,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Chase (Hour 11 Remix)",
+          "album": {
+            "name": "The Chase (Hour 11 Remix)",
+            "id": "MPREb_gy0emnPaW03"
+          },
+          "videoId": "wsPs60ZJtyk",
+          "duration": "3:36",
+          "duration_seconds": 216,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Chase (VXSION Remix)",
+          "album": {
+            "name": "The Chase (Remixes)",
+            "id": "MPREb_H1Pu7j4RupU"
+          },
+          "videoId": "Vcn0qGb1VB0",
+          "duration": "3:35",
+          "duration_seconds": 215,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            },
+            {
+              "name": "VXSION",
+              "id": "UCWeygxfPs04hKG_H9jGGSLA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Chase (Johannes Brecht Remix)",
+          "album": {
+            "name": "The Chase (Remixes)",
+            "id": "MPREb_H1Pu7j4RupU"
+          },
+          "videoId": "Lez2iwOrfXc",
+          "duration": "6:49",
+          "duration_seconds": 409,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            },
+            {
+              "name": "Johannes Brecht",
+              "id": "UCPU_0DtjuEu4-q3NwoSsLhg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "The Chase",
+          "album": {
+            "name": "Searching for Tomorrow",
+            "id": "MPREb_JRbf2ElWsay"
+          },
+          "videoId": "nDFEqiB9GHk",
+          "duration": "4:46",
+          "duration_seconds": 286,
+          "artists": [
+            {
+              "name": "Timecop1983",
+              "id": "UCVjNyglpxEwPoB65b0Oc4Ew"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "I Can't Believe I Had You",
+          "album": {
+            "name": "Until We Meet Again",
+            "id": "MPREb_Cmcuj7ZObFi"
+          },
+          "videoId": "Gi0D_JLS2l4",
+          "duration": "4:28",
+          "duration_seconds": 268,
+          "artists": [
+            {
+              "name": "Emmit Fenn",
+              "id": "UCxVWCEihdJ1Sxwsh-yZshyQ"
+            }
+          ]
+        }
+      ],
+      "query": "Emmit Fenn - The Chase (Edit)",
+      "search_filter": "songs"
+    },
+    {
+      "case_id": "break-the-surface-remix",
+      "tags": [
+        "negative",
+        "version-conflict",
+        "remix",
+        "search-miss"
+      ],
+      "spotify": {
+        "spotify_id": "4arSjgvodGI9UkI5QvG2Fh",
+        "name": "Break the Surface (Captain Planet Remix)",
+        "artists": [
+          {
+            "name": "Dirtwire"
+          },
+          {
+            "name": "Emma Lucia"
+          },
+          {
+            "name": "Captain Planet"
+          }
+        ],
+        "album": "Break the Surface (Captain Planet Remix)",
+        "duration_ms": 236521
+      },
+      "label": {
+        "state": "provisional",
+        "expected_status": "rejected",
+        "expected_video_ids": [],
+        "provenance": "candidate metadata inspection",
+        "notes": "The top result is the original rather than the requested remix; it must not pass the version gate."
+      },
+      "candidates": [
+        {
+          "resultType": "song",
+          "title": "Break the Surface (feat. Emma Lucia)",
+          "album": {
+            "name": "Crux",
+            "id": "MPREb_YwZLzxVl6px"
+          },
+          "videoId": "VrNAZyTJfmc",
+          "duration": "3:46",
+          "duration_seconds": 226,
+          "artists": [
+            {
+              "name": "Dirtwire",
+              "id": "UCrYE6Stal3Z3rl2N79D6ECg"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Pull the Rope (Captain Planet Remix)",
+          "album": {
+            "name": "The Black Notes EP",
+            "id": "MPREb_UTXPQveejpt"
+          },
+          "videoId": "k9A5Oio88lg",
+          "duration": "6:05",
+          "duration_seconds": 365,
+          "artists": [
+            {
+              "name": "Ibibio Sound Machine",
+              "id": "UC7nmhK4Kq3_ffzD-RT_vtQw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "El Tiempo (Captain Planet Remix)",
+          "album": {
+            "name": "El Tiempo (Captain Planet Remix)",
+            "id": "MPREb_FtzIVbMuetK"
+          },
+          "videoId": "MdrZ6aBRzmc",
+          "duration": "3:44",
+          "duration_seconds": 224,
+          "artists": [
+            {
+              "name": "Novalima",
+              "id": "UCQADEBVKq0Ps3ESXKGVK6gg"
+            },
+            {
+              "name": "Dom La Nena",
+              "id": "UCK5jR1Uoq8VCCkqIVix9etA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Seem to Freeze (Phortah Remix) (feat. Emma Lucia)",
+          "album": {
+            "name": "Seem to Freeze [Phortah Remix]",
+            "id": "MPREb_jqkBpTFbD63"
+          },
+          "videoId": "HqnPPdrLRec",
+          "duration": "5:10",
+          "duration_seconds": 310,
+          "artists": [
+            {
+              "name": "Dirtwire",
+              "id": "UCrYE6Stal3Z3rl2N79D6ECg"
+            },
+            {
+              "name": "Phortah",
+              "id": "UCN1TYMpkEqBuFFajJTn6BPw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Break Through To My Heart (Captain Planet's House Party Remix) (feat. Maiya Sykes)",
+          "album": {
+            "name": "Break Through To My Heart (Captain Planet's House Party Remix)",
+            "id": "MPREb_75DAHyURLtn"
+          },
+          "videoId": "oCArbVhgOO4",
+          "duration": "3:56",
+          "duration_seconds": 236,
+          "artists": [
+            {
+              "name": "Captain Planet",
+              "id": "UCej8FQdUNwRBMcwZUZRcKQQ"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "W/O (Captain Planet Remix)",
+          "album": {
+            "name": "W/O (Captain Planet Remix)",
+            "id": "MPREb_Pabnqi2jvIF"
+          },
+          "videoId": "zF6V4oqinCQ",
+          "duration": "3:55",
+          "duration_seconds": 235,
+          "artists": [
+            {
+              "name": "Manatee Commune",
+              "id": "UCfrRf4l9wHAfMyhlz4lvx_A"
+            },
+            {
+              "name": "Alexander Lynch",
+              "id": "UC0VrHn1T6rqvCQXI7uyHHpw"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Tarpuricusum Sarata (Captain Planet Remix)",
+          "album": {
+            "name": "Luzmila Carpio Remixed (Luzmila Carpio Meets ZZK)",
+            "id": "MPREb_6Fms29S3Ow3"
+          },
+          "videoId": "GF52-7Aet08",
+          "duration": "4:21",
+          "duration_seconds": 261,
+          "artists": [
+            {
+              "name": "Release - Topic",
+              "id": "UCbJerZk33puslFJdLvAhB_Q"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Break Through To My Heart",
+          "album": {
+            "name": "Sounds Like Home",
+            "id": "MPREb_bhmyxiRd3kc"
+          },
+          "videoId": "7Z5SHm0_thQ",
+          "duration": "4:51",
+          "duration_seconds": 291,
+          "artists": [
+            {
+              "name": "Captain Planet & Maiya Sykes",
+              "id": null
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Paper (Captain Planet Remix)",
+          "album": {
+            "name": "Paper (Captain Planet Remix)",
+            "id": "MPREb_XVYBGWnseQv"
+          },
+          "videoId": "_k0ibKyQnMI",
+          "duration": "4:10",
+          "duration_seconds": 250,
+          "artists": [
+            {
+              "name": "Shungudzo",
+              "id": "UC2BbxwKi2YEfDeLjHFsn5bA"
+            }
+          ]
+        },
+        {
+          "resultType": "song",
+          "title": "Wad Alnuba (Captain Planet Remix)",
+          "album": {
+            "name": "Captain Planet Presents: Through the Wire (Remixes 2012-2015)",
+            "id": "MPREb_XnG1OjpQ6Bw"
+          },
+          "videoId": "Ka2xWd3_pL0",
+          "duration": "4:33",
+          "duration_seconds": 273,
+          "artists": [
+            {
+              "name": "Alsarah & The Nubatones",
+              "id": "UCLliP4l3R7f9eAlB0AqkWmw"
+            }
+          ]
+        }
+      ],
+      "query": "Dirtwire, Emma Lucia, Captain Planet - Break the Surface (Captain Planet Remix)",
+      "search_filter": "songs"
+    }
+  ]
+}
