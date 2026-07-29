@@ -1,6 +1,7 @@
 import urllib.request
 from os import path
 import os
+import copy
 import shutil
 import multiprocessing
 import subprocess
@@ -17,6 +18,17 @@ from spotify_dl.scaffold import log
 from spotify_dl.utils import sanitize
 from spotify_dl.constants import DOWNLOAD_LIST, MATCHES_FILENAME
 from spotify_dl.resolver import MatchStore, TrackResolver, is_approved_decision
+
+HLS_FALLBACK_FORMAT = (
+    "best[protocol=m3u8_native][height<=480]/best[protocol=m3u8_native]"
+)
+
+
+def browser_cookie_spec(browser, profile=None):
+    """Build the tuple yt-dlp expects without exporting cookie contents."""
+    if not browser:
+        return None
+    return (browser, profile) if profile else (browser,)
 
 
 def convert_webm_to_mp3(webm_path, mp3_path):
@@ -336,8 +348,12 @@ def find_and_download_songs(kwargs):
                     "album=" + album,
                 ],
             }
-            if kwargs.get("cookies_from_browser"):
-                ydl_opts["cookiesfrombrowser"] = (kwargs["cookies_from_browser"],)
+            cookie_spec = browser_cookie_spec(
+                kwargs.get("cookies_from_browser"),
+                kwargs.get("cookies_browser_profile"),
+            )
+            if cookie_spec:
+                ydl_opts["cookiesfrombrowser"] = cookie_spec
             if not kwargs["skip_mp3"]:
                 mp3_postprocess_opts = {
                     "key": "FFmpegExtractAudio",
@@ -345,12 +361,32 @@ def find_and_download_songs(kwargs):
                     "preferredquality": "192",
                 }
                 ydl_opts["postprocessors"].append(mp3_postprocess_opts.copy())
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                try:
+            downloaded = False
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([f"https://music.youtube.com/watch?v={video_id}"])
+                downloaded = True
+            except Exception as e:  # skipcq: PYL-W0703
+                log.debug(e)
+
+            if not downloaded and kwargs.get("youtube_hls_fallback"):
+                fallback_opts = copy.deepcopy(ydl_opts)
+                fallback_opts["format"] = HLS_FALLBACK_FORMAT
+                fallback_opts["extractor_args"] = {
+                    "youtube": {"player_client": ["web_safari"]}
+                }
+                try:
+                    with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                        ydl.download(
+                            [f"https://www.youtube.com/watch?v={video_id}"]
+                        )
+                    downloaded = True
+                    log.info("Downloaded %s through YouTube HLS fallback", name)
                 except Exception as e:  # skipcq: PYL-W0703
                     log.debug(e)
-                    print(f"Failed to download {name}, make sure yt_dlp is up to date")
+
+            if not downloaded:
+                print(f"Failed to download {name}, make sure yt_dlp is up to date")
 
             if not kwargs["skip_mp3"]:
                 # If MP3 doesn't exist but WebM does, try manual conversion

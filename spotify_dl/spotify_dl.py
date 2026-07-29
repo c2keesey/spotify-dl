@@ -152,6 +152,18 @@ def spotify_dl():
         help="Browser to extract cookies from (e.g., chrome, firefox, safari)",
     )
     parser.add_argument(
+        "--cookies-browser-profile",
+        action="store",
+        type=str,
+        default="",
+        help="Optional browser profile name/path used with --cookies-from-browser",
+    )
+    parser.add_argument(
+        "--youtube-hls-fallback",
+        action="store_true",
+        help="Retry the same approved video through HLS if audio-only transfer fails",
+    )
+    parser.add_argument(
         "--sync",
         action="store_true",
         help="Run in sync mode to keep local directories in sync with Spotify playlists",
@@ -359,6 +371,8 @@ def spotify_dl():
             multi_core=args.multi_core,
             proxy=args.proxy,
             cookies_from_browser=args.cookies_from_browser,
+            cookies_browser_profile=args.cookies_browser_profile,
+            youtube_hls_fallback=args.youtube_hls_fallback,
             match_store_path=match_store_path,
         )
     log.info("Download completed in %.2f seconds.", time.time() - start_time)

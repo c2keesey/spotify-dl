@@ -188,10 +188,12 @@ def test_verified_decision_is_pinned_without_searching_again(tmp_path):
 
 def test_downloader_consumes_exact_approved_video_id(monkeypatch, tmp_path):
     downloaded_urls = []
+    downloader_options = []
 
     class FakeYoutubeDL:
         def __init__(self, options):
             self.options = options
+            downloader_options.append(options)
 
         def __enter__(self):
             return self
@@ -232,10 +234,89 @@ def test_downloader_consumes_exact_approved_video_id(monkeypatch, tmp_path):
             "remove_trailing_tracks": "n",
             "format_str": "bestaudio/best",
             "proxy": "",
+            "cookies_from_browser": "chrome",
+            "cookies_browser_profile": "Profile 1",
         }
     )
 
     assert downloaded_urls == ["https://music.youtube.com/watch?v=approved-video"]
+    assert downloader_options[0]["cookiesfrombrowser"] == ("chrome", "Profile 1")
+
+
+def test_browser_cookie_spec_keeps_browser_only_configuration_compatible():
+    assert youtube.browser_cookie_spec("chrome") == ("chrome",)
+    assert youtube.browser_cookie_spec("chrome", "Profile 1") == (
+        "chrome",
+        "Profile 1",
+    )
+    assert youtube.browser_cookie_spec("") is None
+
+
+def test_downloader_retries_same_approved_video_id_with_hls(
+    monkeypatch, tmp_path
+):
+    attempts = []
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self.options = options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            attempts.append((self.options, urls))
+            if len(attempts) == 1:
+                raise RuntimeError("primary GVS stream rejected")
+
+    monkeypatch.setattr(youtube.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    reference_file = tmp_path / "tracks.log"
+    reference_file.write_text(
+        "Pinned;Artist;;1;Album;None;0\n",
+        encoding="utf-8",
+    )
+    approved = evaluate_candidates(
+        track("Pinned", "Artist"),
+        [candidate("approved-video", "Pinned", "Artist")],
+    )
+
+    youtube.find_and_download_songs(
+        {
+            "reference_file": str(reference_file),
+            "track_db": [
+                {
+                    **track("Pinned", "Artist"),
+                    "playlist_num": 1,
+                    "save_path": tmp_path,
+                    "match_decision": approved,
+                }
+            ],
+            "file_name_f": youtube.default_filename,
+            "use_sponsorblock": "no",
+            "no_overwrites": False,
+            "skip_mp3": True,
+            "remove_trailing_tracks": "n",
+            "format_str": "bestaudio/best",
+            "proxy": "",
+            "cookies_from_browser": "chrome",
+            "cookies_browser_profile": "Profile 1",
+            "youtube_hls_fallback": True,
+        }
+    )
+
+    assert attempts[0][1] == [
+        "https://music.youtube.com/watch?v=approved-video"
+    ]
+    assert attempts[1][1] == [
+        "https://www.youtube.com/watch?v=approved-video"
+    ]
+    assert attempts[1][0]["format"] == youtube.HLS_FALLBACK_FORMAT
+    assert attempts[1][0]["extractor_args"] == {
+        "youtube": {"player_client": ["web_safari"]}
+    }
 
 
 def test_downloader_never_downloads_rejected_decision(monkeypatch, tmp_path):

@@ -87,7 +87,10 @@ Create `sync_config.json`:
 {
   "output_dir": "~/Music/spotify-sync",
   "spotify_user_id": "YOUR_SPOTIFY_USER_ID",
-  "folders_file": "folders.json"
+  "folders_file": "folders.json",
+  "cookies_from_browser": "chrome",
+  "cookies_browser_profile": "Profile 1",
+  "youtube_hls_fallback": true
 }
 ```
 
@@ -96,6 +99,9 @@ Create `sync_config.json`:
 | `output_dir` | Where to store downloaded music |
 | `spotify_user_id` | Your Spotify user ID (for playlist lookup by name) |
 | `folders_file` | Optional. Path to folder organization file |
+| `cookies_from_browser` | Optional. Let yt-dlp read cookies directly from this browser; no cookie values are stored in the config |
+| `cookies_browser_profile` | Optional. Profile name/path to use instead of the browser's default profile |
+| `youtube_hls_fallback` | Optional. If the preferred audio-only stream returns 403, retry the same approved video ID through a 480p-or-lower HLS stream and extract its 128 kbps AAC audio |
 
 ### Running sync
 

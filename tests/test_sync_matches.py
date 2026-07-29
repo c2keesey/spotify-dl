@@ -212,6 +212,9 @@ def test_successful_source_change_replaces_old_file(monkeypatch, tmp_path):
     manual["source"]["video_id"] = "different-video"
 
     def download_new_source(**kwargs):
+        assert kwargs["cookies_from_browser"] == "chrome"
+        assert kwargs["cookies_browser_profile"] == "Profile 1"
+        assert kwargs["youtube_hls_fallback"] is True
         existing.write_text("new audio", encoding="utf-8")
         return {"spotify-id": manual}
 
@@ -229,7 +232,12 @@ def test_successful_source_change_replaces_old_file(monkeypatch, tmp_path):
             )
         ],
         cache_dir,
-        {"_match_store_path": str(tmp_path / "matches.json")},
+        {
+            "_match_store_path": str(tmp_path / "matches.json"),
+            "cookies_from_browser": "chrome",
+            "cookies_browser_profile": "Profile 1",
+            "youtube_hls_fallback": True,
+        },
     )
 
     assert result["spotify-id"]["filename"] == "Artist - Track.mp3"

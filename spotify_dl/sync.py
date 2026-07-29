@@ -347,6 +347,8 @@ def download_to_cache_batch(tracks, cache_dir, config, multi_core=0):
             multi_core=multi_core,
             proxy=config.get("proxy", ""),
             cookies_from_browser=config.get("cookies_from_browser"),
+            cookies_browser_profile=config.get("cookies_browser_profile"),
+            youtube_hls_fallback=config.get("youtube_hls_fallback", False),
             match_store_path=config.get("_match_store_path"),
         )
     except Exception as e:
