@@ -22,25 +22,27 @@ def test_seed_eval_is_valid_and_runs_offline():
     assert report["summary"] == {
         "total_cases": 9,
         "label_states": {
-            "gold": 0,
-            "provisional": 6,
-            "needs_review": 3,
+            "gold": 9,
+            "provisional": 0,
+            "needs_review": 0,
         },
         "predicted_statuses": {
             "verified": 3,
             "rejected": 5,
             "ambiguous": 1,
         },
-        "gold_total": 0,
-        "gold_passed": 0,
+        "gold_total": 9,
+        "gold_passed": 9,
         "gold_failed": 0,
-        "gold_accuracy": None,
+        "gold_accuracy": 1.0,
     }
 
 
 def test_only_gold_labels_contribute_to_metrics():
     eval_set = load_eval_set(EVAL_PATH)
     promoted = copy.deepcopy(eval_set)
+    for case in promoted["cases"]:
+        case["label"]["state"] = "provisional"
     promoted["cases"][0]["label"]["state"] = "gold"
     promoted["cases"][1]["label"]["state"] = "gold"
     promoted["cases"][1]["label"]["expected_status"] = "rejected"

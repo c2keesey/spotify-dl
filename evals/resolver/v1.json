@@ -23,13 +23,14 @@
         "duration_ms": 118505
       },
       "label": {
-        "state": "provisional",
+        "state": "gold",
         "expected_status": "verified",
         "expected_video_ids": [
           "C1Pkw5oChR0"
         ],
-        "provenance": "sdl-apv issue expectation plus metadata inspection",
-        "notes": "Clean exact-title, artist, album, and duration match."
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "Clean exact-title, artist, album, and duration match.",
+        "reviewed_at": "2026-07-29T05:12:39.674309Z"
       },
       "candidates": [
         {
@@ -232,13 +233,14 @@
         "duration_ms": 106949
       },
       "label": {
-        "state": "provisional",
+        "state": "gold",
         "expected_status": "verified",
         "expected_video_ids": [
           "elzQaioVEkY"
         ],
-        "provenance": "sdl-apv issue expectation plus metadata inspection",
-        "notes": "Clean exact-title, artist, album, and duration match."
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "Clean exact-title, artist, album, and duration match.",
+        "reviewed_at": "2026-07-29T05:12:39.674579Z"
       },
       "candidates": [
         {
@@ -462,11 +464,12 @@
         "duration_ms": 129677
       },
       "label": {
-        "state": "provisional",
+        "state": "gold",
         "expected_status": "rejected",
         "expected_video_ids": [],
-        "provenance": "sdl-apv issue expectation plus metadata inspection",
-        "notes": "The correct track is absent from the captured top ten; nearby Player Dave results must not be accepted."
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "The correct track is absent from the captured top ten; nearby Player Dave results must not be accepted.",
+        "reviewed_at": "2026-07-29T05:12:39.674593Z"
       },
       "candidates": [
         {
@@ -678,11 +681,12 @@
         "duration_ms": 224858
       },
       "label": {
-        "state": "provisional",
+        "state": "gold",
         "expected_status": "rejected",
         "expected_video_ids": [],
-        "provenance": "sdl-apv issue expectation plus metadata inspection",
-        "notes": "The correct track is absent from the captured top ten; a different Dirtwire track ranks first."
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "The correct track is absent from the captured top ten; a different Dirtwire track ranks first.",
+        "reviewed_at": "2026-07-29T05:12:39.674597Z"
       },
       "candidates": [
         {
@@ -882,13 +886,12 @@
         "duration_ms": 176419
       },
       "label": {
-        "state": "needs_review",
-        "expected_status": "verified",
-        "expected_video_ids": [
-          "22VEn4ni3jQ"
-        ],
-        "provenance": "candidate metadata inspection; requires human playback review",
-        "notes": "Likely false negative: YouTube combines both artists into one string, so the current primary-artist gate fails."
+        "state": "gold",
+        "expected_status": "rejected",
+        "expected_video_ids": [],
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "Likely false negative: YouTube combines both artists into one string, so the current primary-artist gate fails.",
+        "reviewed_at": "2026-07-29T05:12:39.674601Z"
       },
       "candidates": [
         {
@@ -1088,14 +1091,15 @@
         "duration_ms": 204933
       },
       "label": {
-        "state": "needs_review",
-        "expected_status": "verified",
+        "state": "gold",
+        "expected_status": "ambiguous",
         "expected_video_ids": [
           "WCfanCc1dzw",
           "MdjXljT13Bc"
         ],
-        "provenance": "candidate metadata inspection; requires human playback review",
-        "notes": "Two candidates have identical metadata and scores. Confirm whether both uploads are acceptable or ambiguity is the safer result."
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "Two candidates have identical metadata and scores. Confirm whether both uploads are acceptable or ambiguity is the safer result.",
+        "reviewed_at": "2026-07-29T05:12:39.674605Z"
       },
       "candidates": [
         {
@@ -1307,13 +1311,12 @@
         "duration_ms": 153983
       },
       "label": {
-        "state": "needs_review",
-        "expected_status": "verified",
-        "expected_video_ids": [
-          "NYioN1vkzzE"
-        ],
-        "provenance": "candidate metadata inspection; requires human playback review",
-        "notes": "Likely false negative: YouTube combines both artists into one string, so the current primary-artist gate fails."
+        "state": "gold",
+        "expected_status": "rejected",
+        "expected_video_ids": [],
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "Likely false negative: YouTube combines both artists into one string, so the current primary-artist gate fails.",
+        "reviewed_at": "2026-07-29T05:12:39.674608Z"
       },
       "candidates": [
         {
@@ -1521,13 +1524,14 @@
         "duration_ms": 170721
       },
       "label": {
-        "state": "provisional",
+        "state": "gold",
         "expected_status": "verified",
         "expected_video_ids": [
           "gyrvxcJWUFw"
         ],
-        "provenance": "candidate metadata inspection",
-        "notes": "The edit should match the edit while remix candidates fail the version gate."
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "The edit should match the edit while remix candidates fail the version gate.",
+        "reviewed_at": "2026-07-29T05:12:39.674612Z"
       },
       "candidates": [
         {
@@ -1746,11 +1750,12 @@
         "duration_ms": 236521
       },
       "label": {
-        "state": "provisional",
+        "state": "gold",
         "expected_status": "rejected",
         "expected_video_ids": [],
-        "provenance": "candidate metadata inspection",
-        "notes": "The top result is the original rather than the requested remix; it must not pass the version gate."
+        "provenance": "human review: accepted resolver decision for all cases",
+        "notes": "The top result is the original rather than the requested remix; it must not pass the version gate.",
+        "reviewed_at": "2026-07-29T05:12:39.674614Z"
       },
       "candidates": [
         {

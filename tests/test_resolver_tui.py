@@ -12,6 +12,8 @@ def test_tui_classification_persists_and_advances_without_audio(
     monkeypatch,
 ):
     source = load_eval_set(EVAL_PATH)
+    for case in source["cases"]:
+        case["label"]["state"] = "provisional"
     path = tmp_path / "eval.json"
     save_eval_set(path, source)
     reviewer = ResolverReviewTUI(path, autoplay=False)

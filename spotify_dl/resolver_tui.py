@@ -416,13 +416,13 @@ class ResolverReviewTUI:
         self._add(
             screen,
             footer + 1,
-            "y accept resolver  v verified  r rejected  a ambiguous  u defer",
+            "y resolver is right  v selected song is right  r no song is right",
             width,
         )
         self._add(
             screen,
             footer + 2,
-            "n next unreviewed  f next fence  q quit",
+            "a checked songs ambiguous  u defer  n unreviewed  f fence  q quit",
             width,
         )
         self._add(screen, footer + 3, self.message, width, curses.A_BOLD)

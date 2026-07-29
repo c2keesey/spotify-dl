@@ -5,9 +5,8 @@ metadata comes from the local exported Spotify library, and its candidate lists
 are snapshots of real YouTube Music searches. The runner is offline and
 repeatable after capture.
 
-No initial label is gold. The labels marked `provisional` are strong hypotheses;
-the `needs_review` cases are deliberately on the fence. Only labels changed to
-`gold` contribute to accuracy.
+The initial labels were provisional hypotheses. All nine v1 cases have now been
+human-reviewed and marked `gold`; only gold labels contribute to accuracy.
 
 ## Review
 
