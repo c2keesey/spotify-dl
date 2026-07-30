@@ -350,6 +350,9 @@ def download_to_cache_batch(tracks, cache_dir, config, multi_core=0):
             cookies_browser_profile=config.get("cookies_browser_profile"),
             youtube_hls_fallback=config.get("youtube_hls_fallback", False),
             youtube_hls_preferred=config.get("youtube_hls_preferred", False),
+            youtube_progressive_fallback=config.get(
+                "youtube_progressive_fallback", False
+            ),
             download_retries=config.get("download_retries", 10),
             fragment_retries=config.get("fragment_retries", 10),
             extractor_retries=config.get("extractor_retries", 5),

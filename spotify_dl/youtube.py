@@ -23,6 +23,9 @@ from spotify_dl.resolver import MatchStore, TrackResolver, is_approved_decision
 HLS_FALLBACK_FORMAT = (
     "best[protocol=m3u8_native][height<=480]/best[protocol=m3u8_native]"
 )
+PROGRESSIVE_FALLBACK_FORMAT = (
+    "18/best[acodec!=none][vcodec!=none][height<=480]"
+)
 
 
 def bounded_exponential_backoff(
@@ -407,6 +410,12 @@ def find_and_download_songs(kwargs):
             hls_opts["extractor_args"] = {
                 "youtube": {"player_client": ["web_safari"]}
             }
+            progressive_opts = copy.deepcopy(ydl_opts)
+            progressive_opts.pop("cookiesfrombrowser", None)
+            progressive_opts["format"] = PROGRESSIVE_FALLBACK_FORMAT
+            progressive_opts["extractor_args"] = {
+                "youtube": {"player_client": ["android_vr"]}
+            }
             primary_attempt = (
                 ydl_opts,
                 f"https://music.youtube.com/watch?v={video_id}",
@@ -417,12 +426,19 @@ def find_and_download_songs(kwargs):
                 f"https://www.youtube.com/watch?v={video_id}",
                 "YouTube HLS stream",
             )
+            progressive_attempt = (
+                progressive_opts,
+                f"https://www.youtube.com/watch?v={video_id}",
+                "YouTube progressive fallback",
+            )
             if kwargs.get("youtube_hls_preferred"):
                 attempts = [hls_attempt, primary_attempt]
             elif kwargs.get("youtube_hls_fallback"):
                 attempts = [primary_attempt, hls_attempt]
             else:
                 attempts = [primary_attempt]
+            if kwargs.get("youtube_progressive_fallback"):
+                attempts.append(progressive_attempt)
 
             downloaded = False
             for attempt_opts, source_url, description in attempts:

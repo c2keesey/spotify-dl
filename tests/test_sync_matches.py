@@ -216,6 +216,7 @@ def test_successful_source_change_replaces_old_file(monkeypatch, tmp_path):
         assert kwargs["cookies_browser_profile"] == "Profile 1"
         assert kwargs["youtube_hls_fallback"] is True
         assert kwargs["youtube_hls_preferred"] is True
+        assert kwargs["youtube_progressive_fallback"] is True
         assert kwargs["download_retries"] == 7
         assert kwargs["fragment_retries"] == 8
         assert kwargs["extractor_retries"] == 4
@@ -247,6 +248,7 @@ def test_successful_source_change_replaces_old_file(monkeypatch, tmp_path):
             "cookies_browser_profile": "Profile 1",
             "youtube_hls_fallback": True,
             "youtube_hls_preferred": True,
+            "youtube_progressive_fallback": True,
             "download_retries": 7,
             "fragment_retries": 8,
             "extractor_retries": 4,

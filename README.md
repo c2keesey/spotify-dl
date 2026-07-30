@@ -106,6 +106,7 @@ Create `sync_config.json`:
 | `cookies_browser_profile` | Optional. Profile name/path to use instead of the browser's default profile |
 | `youtube_hls_fallback` | Optional. If the preferred audio-only stream returns 403, retry the same approved video ID through a 480p-or-lower HLS stream and extract its 128 kbps AAC audio |
 | `youtube_hls_preferred` | Optional. Try the authenticated HLS stream first, then the audio-only stream. Useful when audio-only requests consistently require a PO token |
+| `youtube_progressive_fallback` | Optional. After configured authenticated attempts fail, retry the same approved video ID through a cookie-free Android-VR progressive stream |
 | `download_retries` | Optional. HTTP/file retries inside yt-dlp (default 10) |
 | `fragment_retries` | Optional. HLS fragment retries inside yt-dlp (default 10) |
 | `extractor_retries` | Optional. Metadata extraction retries inside yt-dlp (default 5) |

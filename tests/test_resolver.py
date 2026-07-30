@@ -383,6 +383,74 @@ def test_downloader_can_prefer_hls_before_audio_only(monkeypatch, tmp_path):
     assert attempts[0][0]["format"] == youtube.HLS_FALLBACK_FORMAT
 
 
+def test_downloader_uses_cookie_free_same_id_progressive_fallback(
+    monkeypatch, tmp_path
+):
+    attempts = []
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self.options = options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            attempts.append((self.options, urls))
+            if len(attempts) < 3:
+                raise RuntimeError("stream unavailable")
+
+    monkeypatch.setattr(youtube.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    reference_file = tmp_path / "tracks.log"
+    reference_file.write_text(
+        "Pinned;Artist;;1;Album;None;0\n",
+        encoding="utf-8",
+    )
+    approved = evaluate_candidates(
+        track("Pinned", "Artist"),
+        [candidate("approved-video", "Pinned", "Artist")],
+    )
+
+    youtube.find_and_download_songs(
+        {
+            "reference_file": str(reference_file),
+            "track_db": [
+                {
+                    **track("Pinned", "Artist"),
+                    "playlist_num": 1,
+                    "save_path": tmp_path,
+                    "match_decision": approved,
+                }
+            ],
+            "file_name_f": youtube.default_filename,
+            "use_sponsorblock": "no",
+            "no_overwrites": False,
+            "skip_mp3": True,
+            "remove_trailing_tracks": "n",
+            "proxy": "",
+            "cookies_from_browser": "chrome",
+            "cookies_browser_profile": "Profile 1",
+            "youtube_hls_fallback": True,
+            "youtube_progressive_fallback": True,
+        }
+    )
+
+    assert [attempt[1] for attempt in attempts] == [
+        ["https://music.youtube.com/watch?v=approved-video"],
+        ["https://www.youtube.com/watch?v=approved-video"],
+        ["https://www.youtube.com/watch?v=approved-video"],
+    ]
+    progressive_options = attempts[2][0]
+    assert "cookiesfrombrowser" not in progressive_options
+    assert progressive_options["format"] == youtube.PROGRESSIVE_FALLBACK_FORMAT
+    assert progressive_options["extractor_args"] == {
+        "youtube": {"player_client": ["android_vr"]}
+    }
+
+
 def test_downloader_never_downloads_rejected_decision(monkeypatch, tmp_path):
     class FailYoutubeDL:
         def __init__(self, options):
