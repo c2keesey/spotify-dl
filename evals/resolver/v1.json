@@ -887,10 +887,12 @@
       },
       "label": {
         "state": "gold",
-        "expected_status": "rejected",
-        "expected_video_ids": [],
+        "expected_status": "verified",
+        "expected_video_ids": [
+          "22VEn4ni3jQ"
+        ],
         "provenance": "human review: accepted resolver decision for all cases",
-        "notes": "Likely false negative: YouTube combines both artists into one string, so the current primary-artist gate fails.",
+        "notes": "Verified after resolving the known false negative where YouTube combines both artists into one string.",
         "reviewed_at": "2026-07-29T05:12:39.674601Z"
       },
       "candidates": [
@@ -1092,13 +1094,12 @@
       },
       "label": {
         "state": "gold",
-        "expected_status": "ambiguous",
+        "expected_status": "verified",
         "expected_video_ids": [
-          "WCfanCc1dzw",
           "MdjXljT13Bc"
         ],
         "provenance": "human review: accepted resolver decision for all cases",
-        "notes": "Two candidates have identical metadata and scores. Confirm whether both uploads are acceptable or ambiguity is the safer result.",
+        "notes": "Equivalent recordings tie on title, artist, and duration; prefer the candidate from Spotify's exact album.",
         "reviewed_at": "2026-07-29T05:12:39.674605Z"
       },
       "candidates": [
@@ -1312,10 +1313,12 @@
       },
       "label": {
         "state": "gold",
-        "expected_status": "rejected",
-        "expected_video_ids": [],
+        "expected_status": "verified",
+        "expected_video_ids": [
+          "NYioN1vkzzE"
+        ],
         "provenance": "human review: accepted resolver decision for all cases",
-        "notes": "Likely false negative: YouTube combines both artists into one string, so the current primary-artist gate fails.",
+        "notes": "Verified after resolving the known false negative where YouTube combines both artists into one string.",
         "reviewed_at": "2026-07-29T05:12:39.674608Z"
       },
       "candidates": [

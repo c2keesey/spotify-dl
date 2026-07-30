@@ -128,19 +128,158 @@ def test_conflicting_remix_is_not_approved_without_an_original():
     assert decision["status"] == "rejected"
 
 
-def test_indistinguishable_sources_are_ambiguous():
+def test_equivalent_sources_prefer_the_exact_album_without_ambiguity():
+    spotify_track = track("Same Song", "Same Artist")
+    single_release = candidate("video-z", "Same Song", "Same Artist")
+    single_release["album"]["name"] = "Same Song - Single"
+    album_release = candidate("video-a", "Same Song", "Same Artist")
+    decision = evaluate_candidates(
+        spotify_track,
+        [single_release, album_release],
+    )
+
+    assert decision["status"] == "verified"
+    assert decision["source"]["video_id"] == "video-a"
+    assert decision["scores"]["runner_up_margin"] == 0
+    assert decision["reasons"] == ["exact_album_preferred"]
+
+
+def test_materially_different_tied_sources_remain_ambiguous():
     spotify_track = track("Same Song", "Same Artist")
     decision = evaluate_candidates(
         spotify_track,
         [
-            candidate("video-a", "Same Song", "Same Artist"),
-            candidate("video-b", "Same Song", "Same Artist"),
+            candidate("video-a", "Same Song", "Same Artist", 180),
+            candidate("video-b", "Same Song", "Same Artist", 184),
         ],
     )
 
     assert decision["status"] == "ambiguous"
-    assert decision["scores"]["runner_up_margin"] == 0
+    assert decision["scores"]["runner_up_margin"] < 0.05
     assert decision["reasons"] == ["runner_up_margin_too_small"]
+
+
+def test_exact_album_breaks_a_close_non_equivalent_tie():
+    spotify_track = track("Same Song", "Same Artist")
+    exact_album = candidate("video-a", "Same Song", "Same Artist", 180)
+    compilation = candidate("video-b", "Same Song", "Same Artist", 184)
+    compilation["album"]["name"] = "Various Artists Compilation"
+
+    decision = evaluate_candidates(
+        spotify_track,
+        [compilation, exact_album],
+    )
+
+    assert decision["status"] == "verified"
+    assert decision["source"]["video_id"] == "video-a"
+    assert decision["reasons"] == ["exact_album_preferred"]
+
+
+def test_source_title_feature_credit_uses_spotify_artist_metadata():
+    spotify_track = track(
+        "You Got Me",
+        [{"name": "PEEKABOO"}, {"name": "Bill Lucas"}],
+        235_893,
+    )
+    decision = evaluate_candidates(
+        spotify_track,
+        [
+            candidate(
+                "correct",
+                "You Got Me (feat. Bill Lucas)",
+                "PEEKABOO",
+                236,
+            )
+        ],
+    )
+
+    assert decision["status"] == "verified"
+    assert decision["scores"]["title_similarity"] == 1
+    assert (
+        decision["normalized"]["source_title_for_similarity"]
+        == decision["normalized"]["spotify_title"]
+    )
+
+
+def test_spotify_title_with_credit_uses_shared_artist_metadata():
+    spotify_track = track(
+        "Of Blue (with Mereba)",
+        [{"name": "JID"}, {"name": "Mereba"}],
+        397_000,
+    )
+    source = candidate("correct", "Of Blue", "JID", 397)
+    source["artists"].append({"name": "Mereba"})
+
+    decision = evaluate_candidates(spotify_track, [source])
+
+    assert decision["status"] == "verified"
+    assert decision["scores"]["title_similarity"] == 1
+    assert (
+        decision["normalized"]["spotify_title_for_similarity"]
+        == decision["normalized"]["source_title_for_similarity"]
+        == "of blue"
+    )
+
+
+def test_combined_source_artist_credit_matches_primary_artist():
+    spotify_track = track(
+        "Swerve It",
+        [
+            {"name": "Bou"},
+            {"name": "Camo & Krooked"},
+            {"name": "Mefjus"},
+        ],
+        168_000,
+    )
+    source = candidate(
+        "correct",
+        "Swerve It",
+        "Bou, Camo & Krooked, and Mefjus",
+        168,
+    )
+
+    decision = evaluate_candidates(spotify_track, [source])
+
+    assert decision["status"] == "verified"
+    assert decision["scores"]["artist_similarity"] == 1
+
+
+def test_unknown_source_title_feature_credit_is_not_stripped():
+    decision = evaluate_candidates(
+        track("You Got Me", "PEEKABOO", 236_000),
+        [
+            candidate(
+                "wrong-feature",
+                "You Got Me (feat. Someone Else)",
+                "PEEKABOO",
+                236,
+            )
+        ],
+    )
+
+    assert decision["status"] == "rejected"
+    assert decision["candidates"][0]["gates"]["title"] is False
+
+
+def test_feature_credit_does_not_hide_a_conflicting_version():
+    decision = evaluate_candidates(
+        track(
+            "You Got Me",
+            [{"name": "PEEKABOO"}, {"name": "Bill Lucas"}],
+            236_000,
+        ),
+        [
+            candidate(
+                "wrong-remix",
+                "You Got Me (feat. Bill Lucas) (Remix)",
+                "PEEKABOO",
+                236,
+            )
+        ],
+    )
+
+    assert decision["status"] == "rejected"
+    assert decision["candidates"][0]["gates"]["version"] is False
 
 
 def test_manual_approval_and_rejection_persist(tmp_path):
@@ -166,6 +305,36 @@ def test_manual_approval_and_rejection_persist(tmp_path):
     )
 
 
+def test_multiple_decisions_persist_in_one_store_update(tmp_path):
+    store_path = tmp_path / "matches.json"
+    decisions = [
+        evaluate_candidates(
+            track("First", "Artist", spotify_id="first"),
+            [candidate("first-video", "First", "Artist")],
+        ),
+        evaluate_candidates(
+            track("Second", "Artist", spotify_id="second"),
+            [candidate("second-video", "Second", "Artist")],
+        ),
+    ]
+
+    MatchStore(store_path).save_decisions(decisions)
+    reloaded = MatchStore(store_path)
+
+    assert (
+        reloaded.decision_for(
+            track("First", "Artist", spotify_id="first")
+        )["source"]["video_id"]
+        == "first-video"
+    )
+    assert (
+        reloaded.decision_for(
+            track("Second", "Artist", spotify_id="second")
+        )["source"]["video_id"]
+        == "second-video"
+    )
+
+
 def test_verified_decision_is_pinned_without_searching_again(tmp_path):
     source = candidate("approved-video", "Pinned", "Artist")
 
@@ -184,6 +353,76 @@ def test_verified_decision_is_pinned_without_searching_again(tmp_path):
     decision = second.resolve(track("Pinned", "Artist"))
 
     assert decision["source"]["video_id"] == "approved-video"
+
+
+def test_resolver_searches_videos_after_song_results_fail_gates(tmp_path):
+    correct = candidate("video-source", "Small Artist Song", "Small Artist")
+    wrong = candidate("wrong-song", "Different Song", "Small Artist")
+
+    class Search:
+        def search(self, query, filter):
+            return [correct] if filter == "videos" else [wrong]
+
+    resolver = TrackResolver(
+        MatchStore(tmp_path / "matches.json"),
+        client_factory=Search,
+    )
+
+    decision = resolver.resolve(track("Small Artist Song", "Small Artist"))
+
+    assert decision["status"] == "verified"
+    assert decision["source"]["video_id"] == "video-source"
+
+
+def test_resolver_falls_back_to_primary_artist_query(tmp_path):
+    correct = candidate("primary-source", "Collaboration", "Primary Artist")
+    wrong = candidate("wrong-song", "Different Song", "Primary Artist")
+    queries = []
+
+    class Search:
+        def search(self, query, filter):
+            queries.append((query, filter))
+            if query == "Primary Artist - Collaboration" and filter == "songs":
+                return [correct]
+            return [wrong] if filter == "songs" else []
+
+    resolver = TrackResolver(
+        MatchStore(tmp_path / "matches.json"),
+        client_factory=Search,
+    )
+    spotify_track = track(
+        "Collaboration",
+        [{"name": "Primary Artist"}, {"name": "Guest Artist"}],
+    )
+
+    decision = resolver.resolve(spotify_track)
+
+    assert decision["status"] == "verified"
+    assert decision["source"]["video_id"] == "primary-source"
+    assert ("Primary Artist - Collaboration", "songs") in queries
+
+
+def test_failed_optional_fallback_preserves_initial_decision(tmp_path):
+    sources = [
+        candidate("video-a", "Same Song", "Same Artist", 180),
+        candidate("video-b", "Same Song", "Same Artist", 184),
+    ]
+
+    class Search:
+        def search(self, query, filter):
+            if filter == "videos":
+                raise RuntimeError("optional video search failed")
+            return sources
+
+    resolver = TrackResolver(
+        MatchStore(tmp_path / "matches.json"),
+        client_factory=Search,
+    )
+
+    decision = resolver.resolve(track("Same Song", "Same Artist"))
+
+    assert decision["status"] == "ambiguous"
+    assert decision["reasons"] == ["runner_up_margin_too_small"]
 
 
 def test_downloader_consumes_exact_approved_video_id(monkeypatch, tmp_path):

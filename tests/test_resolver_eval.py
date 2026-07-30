@@ -27,9 +27,9 @@ def test_seed_eval_is_valid_and_runs_offline():
             "needs_review": 0,
         },
         "predicted_statuses": {
-            "verified": 3,
-            "rejected": 5,
-            "ambiguous": 1,
+            "verified": 6,
+            "rejected": 3,
+            "ambiguous": 0,
         },
         "gold_total": 9,
         "gold_passed": 9,
@@ -115,13 +115,14 @@ def test_accepting_resolver_result_produces_matching_label():
     report = evaluate_eval_set(load_eval_set(EVAL_PATH))
     verified = report["cases"][0]
     rejected = report["cases"][2]
-    ambiguous = report["cases"][5]
+    equivalent = report["cases"][5]
 
     assert label_for_resolver_result(verified) == (
         "verified",
         ["C1Pkw5oChR0"],
     )
     assert label_for_resolver_result(rejected) == ("rejected", [])
-    status, video_ids = label_for_resolver_result(ambiguous)
-    assert status == "ambiguous"
-    assert set(video_ids) == {"WCfanCc1dzw", "MdjXljT13Bc"}
+    assert label_for_resolver_result(equivalent) == (
+        "verified",
+        ["MdjXljT13Bc"],
+    )

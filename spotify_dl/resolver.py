@@ -15,7 +15,7 @@ import Levenshtein
 import ytmusicapi
 
 
-RESOLVER_VERSION = "1"
+RESOLVER_VERSION = "2"
 APPROVED_STATUSES = frozenset({"verified", "manual"})
 TITLE_SIMILARITY_MIN = 0.92
 ARTIST_SIMILARITY_MIN = 0.85
@@ -92,7 +92,14 @@ def _similarity(left: str, right: str) -> float:
 
 def _artist_similarity(spotify_artists: list[str], source_artists: list[str]) -> float:
     normalized_spotify = [normalize_text(artist) for artist in spotify_artists]
-    normalized_source = [normalize_text(artist) for artist in source_artists]
+    normalized_source = []
+    for artist in source_artists:
+        normalized_source.append(normalize_text(artist))
+        normalized_source.extend(
+            normalize_text(part)
+            for part in re.split(r",|;|&|\band\b", artist, flags=re.I)
+            if part.strip()
+        )
     if not normalized_spotify or not normalized_source:
         return 0.0
     # Require the primary Spotify artist to have a strong source counterpart.
@@ -100,6 +107,31 @@ def _artist_similarity(spotify_artists: list[str], source_artists: list[str]) ->
         _similarity(normalized_spotify[0], source_artist)
         for source_artist in normalized_source
     )
+
+
+def _title_without_artist_credits(
+    normalized_title: str,
+    normalized_spotify_artists: list[str],
+) -> str:
+    """Strip a suffix only when Spotify metadata explains every credit."""
+    for marker in (" featuring ", " with "):
+        if marker not in normalized_title:
+            continue
+        base, credits = normalized_title.split(marker, 1)
+        remainder = credits
+        matched = False
+        for artist in sorted(
+            normalized_spotify_artists[1:],
+            key=len,
+            reverse=True,
+        ):
+            if artist and artist in remainder:
+                remainder = remainder.replace(artist, " ")
+                matched = True
+        remainder = re.sub(r"\b(and|featuring|with)\b", " ", remainder)
+        if matched and not " ".join(remainder.split()):
+            return base
+    return normalized_title
 
 
 def _duration_ms(candidate: dict[str, Any]) -> int | None:
@@ -149,6 +181,9 @@ def _source_metadata(candidate: dict[str, Any]) -> dict[str, Any]:
 def spotify_metadata(track: dict[str, Any]) -> dict[str, Any]:
     artists = _artist_names(track.get("artists") or track.get("artist"))
     title = track.get("name") or track.get("title")
+    album = track.get("album")
+    if isinstance(album, dict):
+        album = album.get("name")
     version_markers = track.get("version_markers")
     if version_markers is None:
         version_markers = extract_version_markers(title)
@@ -158,7 +193,7 @@ def spotify_metadata(track: dict[str, Any]) -> dict[str, Any]:
         "id": track.get("spotify_id") or track.get("id"),
         "title": title,
         "artists": artists,
-        "album": track.get("album"),
+        "album": album,
         "duration_ms": track.get("duration_ms"),
         "version_markers": sorted(version_markers),
     }
@@ -177,8 +212,23 @@ def _score_candidate(
     normalized_source_title = normalize_text(source["title"])
     normalized_spotify_artists = [normalize_text(value) for value in spotify["artists"]]
     normalized_source_artists = [normalize_text(value) for value in source["artists"]]
-    title_similarity = _similarity(normalized_spotify_title, normalized_source_title)
+    spotify_title_for_similarity = _title_without_artist_credits(
+        normalized_spotify_title,
+        normalized_spotify_artists,
+    )
+    source_title_for_similarity = _title_without_artist_credits(
+        normalized_source_title,
+        normalized_spotify_artists,
+    )
+    title_similarity = _similarity(
+        spotify_title_for_similarity,
+        source_title_for_similarity,
+    )
     artist_similarity = _artist_similarity(spotify["artists"], source["artists"])
+    album_similarity = _similarity(
+        normalize_text(spotify.get("album")),
+        normalize_text(source.get("album")),
+    )
 
     spotify_duration = spotify.get("duration_ms")
     source_duration = source.get("duration_ms")
@@ -221,12 +271,15 @@ def _score_candidate(
         "normalized": {
             "spotify_title": normalized_spotify_title,
             "source_title": normalized_source_title,
+            "spotify_title_for_similarity": spotify_title_for_similarity,
+            "source_title_for_similarity": source_title_for_similarity,
             "spotify_artists": normalized_spotify_artists,
             "source_artists": normalized_source_artists,
         },
         "scores": {
             "title_similarity": round(title_similarity, 6),
             "artist_similarity": round(artist_similarity, 6),
+            "album_similarity": round(album_similarity, 6),
             "duration_similarity": round(duration_similarity, 6),
             "duration_delta_ms": duration_delta,
             "duration_limit_ms": duration_limit,
@@ -240,6 +293,21 @@ def _score_candidate(
         "eligible": eligible,
         "rejection_reasons": reasons,
     }
+
+
+def _equivalent_sources(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Return whether either eligible source is safe for the same recording."""
+    left_duration = left["source"].get("duration_ms")
+    right_duration = right["source"].get("duration_ms")
+    return bool(
+        left_duration is not None
+        and right_duration is not None
+        and abs(int(left_duration) - int(right_duration)) <= 2000
+        and left["normalized"]["source_title_for_similarity"]
+        == right["normalized"]["source_title_for_similarity"]
+        and left["version_markers"]["source"]
+        == right["version_markers"]["source"]
+    )
 
 
 def evaluate_candidates(
@@ -258,12 +326,27 @@ def evaluate_candidates(
     scored.sort(
         key=lambda item: (
             item["scores"]["overall"],
+            item["scores"]["album_similarity"],
             item["source"]["video_id"],
         ),
         reverse=True,
     )
 
     eligible = [candidate for candidate in scored if candidate["eligible"]]
+    has_close_runner = bool(
+        len(eligible) > 1
+        and eligible[0]["scores"]["overall"]
+        - eligible[1]["scores"]["overall"]
+        < RUNNER_UP_MARGIN_MIN
+    )
+    equivalent_tie = bool(
+        has_close_runner and _equivalent_sources(eligible[0], eligible[1])
+    )
+    exact_album_preference = bool(
+        has_close_runner
+        and eligible[0]["scores"]["album_similarity"] == 1
+        and eligible[1]["scores"]["album_similarity"] < 1
+    )
 
     if not scored:
         status = "rejected"
@@ -275,17 +358,20 @@ def evaluate_candidates(
         reasons = ["strict_gates_failed"]
         selected = scored[0]
         comparison_pool = scored
-    elif len(eligible) > 1 and (
-        eligible[0]["scores"]["overall"] - eligible[1]["scores"]["overall"]
-        < RUNNER_UP_MARGIN_MIN
-    ):
+    elif has_close_runner and not equivalent_tie and not exact_album_preference:
         status = "ambiguous"
         reasons = ["runner_up_margin_too_small"]
         selected = eligible[0]
         comparison_pool = eligible
     else:
         status = "verified"
-        reasons = []
+        reasons = (
+            ["exact_album_preferred"]
+            if exact_album_preference
+            else ["equivalent_candidates"]
+            if equivalent_tie
+            else []
+        )
         selected = eligible[0]
         comparison_pool = eligible
 
@@ -425,9 +511,17 @@ class MatchStore:
         return None
 
     def save_decision(self, decision: dict[str, Any]) -> None:
-        spotify_id = decision.get("spotify_id")
-        if spotify_id:
-            self.data["decisions"][spotify_id] = decision
+        self.save_decisions([decision])
+
+    def save_decisions(self, decisions: Iterable[dict[str, Any]]) -> None:
+        """Persist multiple resolver decisions with one atomic store write."""
+        changed = False
+        for decision in decisions:
+            spotify_id = decision.get("spotify_id")
+            if spotify_id:
+                self.data["decisions"][spotify_id] = decision
+                changed = True
+        if changed:
             self._save()
 
 
@@ -444,28 +538,61 @@ class TrackResolver:
         self.client_factory = client_factory
         self.max_candidates = max_candidates
 
-    def _search(self, track: dict[str, Any]) -> list[dict[str, Any]]:
-        spotify = spotify_metadata(track)
-        query = f"{', '.join(spotify['artists'])} - {spotify['title']}"
+    def _search_requests(
+        self,
+        requests: list[tuple[str, str]],
+        *,
+        existing: Iterable[dict[str, Any]] = (),
+    ) -> list[dict[str, Any]]:
+        deduplicated = {
+            candidate.get("videoId"): candidate
+            for candidate in existing
+            if candidate.get("videoId")
+        }
+        if not requests:
+            return list(deduplicated.values())
+
+        def collect(ytmusic: Any) -> None:
+            for query, search_filter in requests:
+                for candidate in ytmusic.search(query, filter=search_filter) or []:
+                    video_id = candidate.get("videoId")
+                    if video_id and video_id not in deduplicated:
+                        deduplicated[video_id] = candidate
+                    if len(deduplicated) >= self.max_candidates * (
+                        len(requests) + 1
+                    ):
+                        return
+
         client = self.client_factory()
         if hasattr(client, "__enter__"):
             with client as ytmusic:
-                results = ytmusic.search(query, filter="songs")
-                if not results:
-                    results = ytmusic.search(query, filter="videos")
+                collect(ytmusic)
         else:
-            results = client.search(query, filter="songs")
-            if not results:
-                results = client.search(query, filter="videos")
-
-        deduplicated = {}
-        for candidate in results or []:
-            video_id = candidate.get("videoId")
-            if video_id and video_id not in deduplicated:
-                deduplicated[video_id] = candidate
-            if len(deduplicated) >= self.max_candidates:
-                break
+            collect(client)
         return list(deduplicated.values())
+
+    def _search(self, track: dict[str, Any]) -> list[dict[str, Any]]:
+        spotify = spotify_metadata(track)
+        query = f"{', '.join(spotify['artists'])} - {spotify['title']}"
+        return self._search_requests([(query, "songs")])[: self.max_candidates]
+
+    def _fallback_search(
+        self,
+        track: dict[str, Any],
+        existing: Iterable[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        spotify = spotify_metadata(track)
+        full_query = f"{', '.join(spotify['artists'])} - {spotify['title']}"
+        requests = [(full_query, "videos")]
+        if len(spotify["artists"]) > 1:
+            primary_query = f"{spotify['artists'][0]} - {spotify['title']}"
+            requests.extend(
+                [
+                    (primary_query, "songs"),
+                    (primary_query, "videos"),
+                ]
+            )
+        return self._search_requests(requests, existing=existing)
 
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]:
         pinned = self.store.decision_for(track)
@@ -480,5 +607,13 @@ class TrackResolver:
                 "search_failed",
                 type(error).__name__,
             ]
+        if decision["status"] != "verified" and "search_failed" not in decision["reasons"]:
+            try:
+                candidates = self._fallback_search(track, candidates)
+                decision = evaluate_candidates(track, candidates)
+            except Exception:
+                # Preserve a valid initial decision when an optional fallback
+                # provider request fails; a later refresh can retry it.
+                pass
         self.store.save_decision(decision)
         return decision
