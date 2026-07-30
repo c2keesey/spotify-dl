@@ -241,6 +241,15 @@ def test_downloader_consumes_exact_approved_video_id(monkeypatch, tmp_path):
 
     assert downloaded_urls == ["https://music.youtube.com/watch?v=approved-video"]
     assert downloader_options[0]["cookiesfrombrowser"] == ("chrome", "Profile 1")
+    assert downloader_options[0]["retries"] == 10
+    assert downloader_options[0]["fragment_retries"] == 10
+    assert downloader_options[0]["extractor_retries"] == 5
+    retry_sleep = downloader_options[0]["retry_sleep_functions"]
+    assert retry_sleep["http"](1) == 2
+    assert retry_sleep["http"](10) == 60
+    assert downloader_options[0]["sleep_interval_requests"] == 1
+    assert downloader_options[0]["sleep_interval"] == 1
+    assert downloader_options[0]["max_sleep_interval"] == 3
 
 
 def test_browser_cookie_spec_keeps_browser_only_configuration_compatible():
@@ -317,6 +326,61 @@ def test_downloader_retries_same_approved_video_id_with_hls(
     assert attempts[1][0]["extractor_args"] == {
         "youtube": {"player_client": ["web_safari"]}
     }
+
+
+def test_downloader_can_prefer_hls_before_audio_only(monkeypatch, tmp_path):
+    attempts = []
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self.options = options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            attempts.append((self.options, urls))
+
+    monkeypatch.setattr(youtube.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    reference_file = tmp_path / "tracks.log"
+    reference_file.write_text(
+        "Pinned;Artist;;1;Album;None;0\n",
+        encoding="utf-8",
+    )
+    approved = evaluate_candidates(
+        track("Pinned", "Artist"),
+        [candidate("approved-video", "Pinned", "Artist")],
+    )
+
+    youtube.find_and_download_songs(
+        {
+            "reference_file": str(reference_file),
+            "track_db": [
+                {
+                    **track("Pinned", "Artist"),
+                    "playlist_num": 1,
+                    "save_path": tmp_path,
+                    "match_decision": approved,
+                }
+            ],
+            "file_name_f": youtube.default_filename,
+            "use_sponsorblock": "no",
+            "no_overwrites": False,
+            "skip_mp3": True,
+            "remove_trailing_tracks": "n",
+            "proxy": "",
+            "youtube_hls_preferred": True,
+        }
+    )
+
+    assert len(attempts) == 1
+    assert attempts[0][1] == [
+        "https://www.youtube.com/watch?v=approved-video"
+    ]
+    assert attempts[0][0]["format"] == youtube.HLS_FALLBACK_FORMAT
 
 
 def test_downloader_never_downloads_rejected_decision(monkeypatch, tmp_path):

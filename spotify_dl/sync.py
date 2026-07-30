@@ -349,6 +349,19 @@ def download_to_cache_batch(tracks, cache_dir, config, multi_core=0):
             cookies_from_browser=config.get("cookies_from_browser"),
             cookies_browser_profile=config.get("cookies_browser_profile"),
             youtube_hls_fallback=config.get("youtube_hls_fallback", False),
+            youtube_hls_preferred=config.get("youtube_hls_preferred", False),
+            download_retries=config.get("download_retries", 10),
+            fragment_retries=config.get("fragment_retries", 10),
+            extractor_retries=config.get("extractor_retries", 5),
+            retry_backoff_seconds=config.get("retry_backoff_seconds", 2.0),
+            retry_backoff_max_seconds=config.get(
+                "retry_backoff_max_seconds", 60.0
+            ),
+            sleep_interval_requests=config.get(
+                "sleep_interval_requests", 1.0
+            ),
+            sleep_interval=config.get("sleep_interval", 1.0),
+            max_sleep_interval=config.get("max_sleep_interval", 3.0),
             match_store_path=config.get("_match_store_path"),
         )
     except Exception as e:

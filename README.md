@@ -90,7 +90,10 @@ Create `sync_config.json`:
   "folders_file": "folders.json",
   "cookies_from_browser": "chrome",
   "cookies_browser_profile": "Profile 1",
-  "youtube_hls_fallback": true
+  "youtube_hls_fallback": true,
+  "download_retries": 10,
+  "retry_backoff_seconds": 2,
+  "retry_backoff_max_seconds": 60
 }
 ```
 
@@ -102,6 +105,15 @@ Create `sync_config.json`:
 | `cookies_from_browser` | Optional. Let yt-dlp read cookies directly from this browser; no cookie values are stored in the config |
 | `cookies_browser_profile` | Optional. Profile name/path to use instead of the browser's default profile |
 | `youtube_hls_fallback` | Optional. If the preferred audio-only stream returns 403, retry the same approved video ID through a 480p-or-lower HLS stream and extract its 128 kbps AAC audio |
+| `youtube_hls_preferred` | Optional. Try the authenticated HLS stream first, then the audio-only stream. Useful when audio-only requests consistently require a PO token |
+| `download_retries` | Optional. HTTP/file retries inside yt-dlp (default 10) |
+| `fragment_retries` | Optional. HLS fragment retries inside yt-dlp (default 10) |
+| `extractor_retries` | Optional. Metadata extraction retries inside yt-dlp (default 5) |
+| `retry_backoff_seconds` | Optional. Initial retry delay for HTTP, fragment, file, and extraction failures (default 2 seconds) |
+| `retry_backoff_max_seconds` | Optional. Maximum exponential retry delay (default 60 seconds) |
+| `sleep_interval_requests` | Optional. Delay between extraction requests (default 1 second) |
+| `sleep_interval` | Optional. Minimum randomized delay before a download (default 1 second) |
+| `max_sleep_interval` | Optional. Maximum randomized delay before a download (default 3 seconds) |
 
 ### Running sync
 

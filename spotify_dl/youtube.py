@@ -2,6 +2,7 @@ import urllib.request
 from os import path
 import os
 import copy
+import functools
 import shutil
 import multiprocessing
 import subprocess
@@ -22,6 +23,44 @@ from spotify_dl.resolver import MatchStore, TrackResolver, is_approved_decision
 HLS_FALLBACK_FORMAT = (
     "best[protocol=m3u8_native][height<=480]/best[protocol=m3u8_native]"
 )
+
+
+def bounded_exponential_backoff(
+    attempt,
+    *,
+    base_seconds=2.0,
+    max_seconds=60.0,
+):
+    """Return a bounded exponential delay for a 1-indexed retry attempt."""
+    exponent = max(int(attempt) - 1, 0)
+    return min(float(max_seconds), float(base_seconds) * (2 ** exponent))
+
+
+def resilient_ydl_options(kwargs):
+    """Build yt-dlp retry and pacing options from sync configuration."""
+    backoff = functools.partial(
+        bounded_exponential_backoff,
+        base_seconds=float(kwargs.get("retry_backoff_seconds", 2.0)),
+        max_seconds=float(kwargs.get("retry_backoff_max_seconds", 60.0)),
+    )
+    return {
+        "retries": int(kwargs.get("download_retries", 10)),
+        "fragment_retries": int(kwargs.get("fragment_retries", 10)),
+        "extractor_retries": int(kwargs.get("extractor_retries", 5)),
+        "retry_sleep_functions": {
+            "http": backoff,
+            "fragment": backoff,
+            "file_access": backoff,
+            "extractor": backoff,
+        },
+        "sleep_interval_requests": float(
+            kwargs.get("sleep_interval_requests", 1.0)
+        ),
+        "sleep_interval": float(kwargs.get("sleep_interval", 1.0)),
+        "max_sleep_interval": float(
+            kwargs.get("max_sleep_interval", 3.0)
+        ),
+    }
 
 
 def browser_cookie_spec(browser, profile=None):
@@ -348,6 +387,7 @@ def find_and_download_songs(kwargs):
                     "album=" + album,
                 ],
             }
+            ydl_opts.update(resilient_ydl_options(kwargs))
             cookie_spec = browser_cookie_spec(
                 kwargs.get("cookies_from_browser"),
                 kwargs.get("cookies_browser_profile"),
@@ -361,27 +401,37 @@ def find_and_download_songs(kwargs):
                     "preferredquality": "192",
                 }
                 ydl_opts["postprocessors"].append(mp3_postprocess_opts.copy())
-            downloaded = False
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([f"https://music.youtube.com/watch?v={video_id}"])
-                downloaded = True
-            except Exception as e:  # skipcq: PYL-W0703
-                log.debug(e)
 
-            if not downloaded and kwargs.get("youtube_hls_fallback"):
-                fallback_opts = copy.deepcopy(ydl_opts)
-                fallback_opts["format"] = HLS_FALLBACK_FORMAT
-                fallback_opts["extractor_args"] = {
-                    "youtube": {"player_client": ["web_safari"]}
-                }
+            hls_opts = copy.deepcopy(ydl_opts)
+            hls_opts["format"] = HLS_FALLBACK_FORMAT
+            hls_opts["extractor_args"] = {
+                "youtube": {"player_client": ["web_safari"]}
+            }
+            primary_attempt = (
+                ydl_opts,
+                f"https://music.youtube.com/watch?v={video_id}",
+                "preferred audio-only stream",
+            )
+            hls_attempt = (
+                hls_opts,
+                f"https://www.youtube.com/watch?v={video_id}",
+                "YouTube HLS stream",
+            )
+            if kwargs.get("youtube_hls_preferred"):
+                attempts = [hls_attempt, primary_attempt]
+            elif kwargs.get("youtube_hls_fallback"):
+                attempts = [primary_attempt, hls_attempt]
+            else:
+                attempts = [primary_attempt]
+
+            downloaded = False
+            for attempt_opts, source_url, description in attempts:
                 try:
-                    with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                        ydl.download(
-                            [f"https://www.youtube.com/watch?v={video_id}"]
-                        )
+                    with yt_dlp.YoutubeDL(attempt_opts) as ydl:
+                        ydl.download([source_url])
                     downloaded = True
-                    log.info("Downloaded %s through YouTube HLS fallback", name)
+                    log.info("Downloaded %s through %s", name, description)
+                    break
                 except Exception as e:  # skipcq: PYL-W0703
                     log.debug(e)
 

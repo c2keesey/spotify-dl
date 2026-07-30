@@ -215,6 +215,15 @@ def test_successful_source_change_replaces_old_file(monkeypatch, tmp_path):
         assert kwargs["cookies_from_browser"] == "chrome"
         assert kwargs["cookies_browser_profile"] == "Profile 1"
         assert kwargs["youtube_hls_fallback"] is True
+        assert kwargs["youtube_hls_preferred"] is True
+        assert kwargs["download_retries"] == 7
+        assert kwargs["fragment_retries"] == 8
+        assert kwargs["extractor_retries"] == 4
+        assert kwargs["retry_backoff_seconds"] == 3
+        assert kwargs["retry_backoff_max_seconds"] == 45
+        assert kwargs["sleep_interval_requests"] == 1.5
+        assert kwargs["sleep_interval"] == 2
+        assert kwargs["max_sleep_interval"] == 5
         existing.write_text("new audio", encoding="utf-8")
         return {"spotify-id": manual}
 
@@ -237,6 +246,15 @@ def test_successful_source_change_replaces_old_file(monkeypatch, tmp_path):
             "cookies_from_browser": "chrome",
             "cookies_browser_profile": "Profile 1",
             "youtube_hls_fallback": True,
+            "youtube_hls_preferred": True,
+            "download_retries": 7,
+            "fragment_retries": 8,
+            "extractor_retries": 4,
+            "retry_backoff_seconds": 3,
+            "retry_backoff_max_seconds": 45,
+            "sleep_interval_requests": 1.5,
+            "sleep_interval": 2,
+            "max_sleep_interval": 5,
         },
     )
 
