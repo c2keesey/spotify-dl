@@ -301,14 +301,15 @@ def find_and_download_songs(kwargs):
     sponsorblock_postprocessor = []
     reference_file = kwargs["reference_file"]
     files = {}
-    with open(reference_file, "r", encoding="utf-8") as file:
-        for line in file:
-            temp = line.split(";")
+    with open(reference_file, "r", encoding="utf-8", newline="") as file:
+        for temp in csv.reader(file, delimiter=";"):
+            if not temp:
+                continue
             name, artist, album, i = (
                 temp[0],
                 temp[1],
                 temp[4],
-                int(temp[-1].replace("\n", "")),
+                int(temp[-1]),
             )
 
             query = f"{artist} - {name}".replace(":", "").replace('"', "")

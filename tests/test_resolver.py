@@ -252,6 +252,75 @@ def test_downloader_consumes_exact_approved_video_id(monkeypatch, tmp_path):
     assert downloader_options[0]["max_sleep_interval"] == 3
 
 
+def test_quoted_title_round_trips_into_download_filename(monkeypatch, tmp_path):
+    title = 'What Is Love - 7" Mix'
+    approved = evaluate_candidates(
+        track(title, "Haddaway"),
+        [candidate("approved-video", title, "Haddaway")],
+    )
+    spotify_track = {
+        **track(title, "Haddaway"),
+        "track_url": "",
+        "num": 1,
+        "num_tracks": 1,
+        "playlist_num": 1,
+        "tempo": None,
+        "year": "",
+        "genre": "",
+        "cover": None,
+        "match_decision": approved,
+    }
+    reference_file = tmp_path / "tracks.log"
+    track_db = youtube.write_tracks(
+        reference_file,
+        {"urls": [{"save_path": tmp_path, "songs": [spotify_track]}]},
+    )
+    output_paths = []
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self.options = options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            output_path = self.options["outtmpl"].replace("%(ext)s", "mp3")
+            output_paths.append(output_path)
+            with open(output_path, "wb") as audio_file:
+                audio_file.write(b"audio")
+
+    tagged_paths = []
+    monkeypatch.setattr(youtube.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    monkeypatch.setattr(
+        youtube,
+        "set_tags",
+        lambda temp, filename, kwargs: tagged_paths.append(filename),
+    )
+
+    youtube.find_and_download_songs(
+        {
+            "reference_file": str(reference_file),
+            "track_db": track_db,
+            "file_name_f": youtube.default_filename,
+            "use_sponsorblock": "no",
+            "no_overwrites": False,
+            "skip_mp3": False,
+            "remove_trailing_tracks": "n",
+            "format_str": "bestaudio/best",
+            "proxy": "",
+        }
+    )
+
+    expected_path = tmp_path / "Haddaway - What Is Love - 7# Mix.mp3"
+    assert output_paths == [str(expected_path)]
+    assert tagged_paths == [str(expected_path)]
+    assert expected_path.exists()
+
+
 def test_browser_cookie_spec_keeps_browser_only_configuration_compatible():
     assert youtube.browser_cookie_spec("chrome") == ("chrome",)
     assert youtube.browser_cookie_spec("chrome", "Profile 1") == (
